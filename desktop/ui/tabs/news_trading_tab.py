@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTextEdit, QGroupBox,
     QSplitter, QComboBox, QSpinBox, QHeaderView, QFrame
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QColor, QFont
 from datetime import datetime
 import sys
@@ -18,6 +18,38 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from data.news_fetcher import get_news_fetcher
 from data.news_sentiment import get_sentiment_analyzer
+
+
+class SentimentWorker(QThread):
+    """Background worker for sentiment analysis to prevent UI blocking."""
+
+    finished = pyqtSignal(list)  # Emits analyzed articles
+    error = pyqtSignal(str)
+    progress = pyqtSignal(int, int)  # current, total
+
+    def __init__(self, analyzer, articles, parent=None):
+        super().__init__(parent)
+        self.analyzer = analyzer
+        self.articles = articles
+
+    def run(self):
+        try:
+            results = []
+            total = len(self.articles)
+            for i, article in enumerate(self.articles):
+                sentiment = self.analyzer.analyze_article(
+                    headline=article.get("headline", ""),
+                    summary=article.get("summary", ""),
+                    symbols=article.get("symbols", [])
+                )
+                sentiment["article_id"] = article.get("id")
+                sentiment["source"] = article.get("source")
+                sentiment["url"] = article.get("url")
+                results.append(sentiment)
+                self.progress.emit(i + 1, total)
+            self.finished.emit(results)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class NewsTradingTab(QWidget):
@@ -32,6 +64,7 @@ class NewsTradingTab(QWidget):
         self.sentiment_analyzer = get_sentiment_analyzer()
         self.current_articles = []
         self.analyzed_articles = []
+        self.sentiment_worker = None  # Background worker for sentiment analysis
 
         self.setup_ui()
         self.setup_timers()
@@ -388,8 +421,37 @@ class NewsTradingTab(QWidget):
             self.news_table.setItem(i, 4, QTableWidgetItem("..."))
 
     def analyze_news(self, articles: list):
-        """Analyze sentiment for all articles."""
-        self.analyzed_articles = self.sentiment_analyzer.analyze_batch(articles[:10])  # Limit for API
+        """Analyze sentiment for all articles in background thread."""
+        # Don't start if already analyzing
+        if self.sentiment_worker and self.sentiment_worker.isRunning():
+            print("[News] Sentiment analysis already in progress...")
+            return
+
+        # Limit articles and start background worker
+        articles_to_analyze = articles[:10]
+        self.sentiment_worker = SentimentWorker(self.sentiment_analyzer, articles_to_analyze, self)
+        self.sentiment_worker.finished.connect(self._on_sentiment_complete)
+        self.sentiment_worker.error.connect(self._on_sentiment_error)
+        self.sentiment_worker.progress.connect(self._on_sentiment_progress)
+        self.sentiment_worker.start()
+        print(f"[News] Started background sentiment analysis for {len(articles_to_analyze)} articles")
+
+    def _on_sentiment_progress(self, current: int, total: int):
+        """Update progress during sentiment analysis."""
+        # Update status in table
+        for i in range(self.news_table.rowCount()):
+            if i < current:
+                continue
+            self.news_table.setItem(i, 3, QTableWidgetItem(f"Analyzing..."))
+
+    def _on_sentiment_error(self, error: str):
+        """Handle sentiment analysis error."""
+        print(f"[News] Sentiment analysis error: {error}")
+
+    def _on_sentiment_complete(self, results: list):
+        """Handle completed sentiment analysis."""
+        self.analyzed_articles = results
+        print(f"[News] Sentiment analysis complete: {len(results)} articles analyzed")
 
         # Update table with sentiments
         for i, sentiment in enumerate(self.analyzed_articles):
@@ -423,8 +485,8 @@ class NewsTradingTab(QWidget):
         # Update overall sentiment
         self.update_overall_sentiment()
 
-        # Update symbol sentiments
-        self.update_symbol_sentiments()
+        # Update symbol sentiments (skip API calls to avoid blocking)
+        self._update_symbol_sentiments_from_cache()
 
     def update_overall_sentiment(self):
         """Update overall market sentiment display."""
@@ -451,23 +513,42 @@ class NewsTradingTab(QWidget):
         self.confidence_label.setText(f"{confidence:.0f}%")
 
     def update_symbol_sentiments(self):
-        """Update symbol sentiment table."""
-        # Get unique symbols from articles
-        all_symbols = set()
-        for article in self.current_articles:
-            all_symbols.update(article.get("symbols", []))
+        """Update symbol sentiment table (makes API calls - use _update_symbol_sentiments_from_cache instead)."""
+        self._update_symbol_sentiments_from_cache()
 
-        self.symbol_table.setRowCount(len(all_symbols))
+    def _update_symbol_sentiments_from_cache(self):
+        """Update symbol sentiment table using already-analyzed data (no API calls)."""
+        # Build symbol sentiment from cached analyzed_articles
+        symbol_data = {}
+        for article in self.analyzed_articles:
+            for symbol in article.get("source_symbols", []) or article.get("affected_symbols", []):
+                if symbol not in symbol_data:
+                    symbol_data[symbol] = {"bullish": 0, "bearish": 0, "neutral": 0, "count": 0}
+                sent = article.get("sentiment", "neutral")
+                symbol_data[symbol][sent] = symbol_data[symbol].get(sent, 0) + 1
+                symbol_data[symbol]["count"] += 1
 
-        for i, symbol in enumerate(sorted(all_symbols)):
-            # Get sentiment for symbol
-            symbol_sent = self.sentiment_analyzer.get_symbol_sentiment(
-                self.current_articles, symbol
-            )
+        self.symbol_table.setRowCount(len(symbol_data))
+
+        for i, symbol in enumerate(sorted(symbol_data.keys())):
+            data = symbol_data[symbol]
+            bullish = data.get("bullish", 0)
+            bearish = data.get("bearish", 0)
+            count = data.get("count", 0)
+
+            # Determine overall sentiment
+            if bullish > bearish:
+                sent = "bullish"
+                recommendation = "buy" if bullish / max(count, 1) > 0.6 else "hold"
+            elif bearish > bullish:
+                sent = "bearish"
+                recommendation = "sell" if bearish / max(count, 1) > 0.6 else "hold"
+            else:
+                sent = "neutral"
+                recommendation = "hold"
 
             self.symbol_table.setItem(i, 0, QTableWidgetItem(symbol))
 
-            sent = symbol_sent.get("overall_sentiment", "neutral")
             sent_item = QTableWidgetItem(sent.upper())
             if sent == "bullish":
                 sent_item.setForeground(QColor("#00c853"))
@@ -475,13 +556,12 @@ class NewsTradingTab(QWidget):
                 sent_item.setForeground(QColor("#ff1744"))
             self.symbol_table.setItem(i, 1, sent_item)
 
-            self.symbol_table.setItem(i, 2, QTableWidgetItem(str(symbol_sent.get("article_count", 0))))
+            self.symbol_table.setItem(i, 2, QTableWidgetItem(str(count)))
 
-            action = symbol_sent.get("recommendation", "hold")
-            action_item = QTableWidgetItem(action.upper())
-            if action == "buy":
+            action_item = QTableWidgetItem(recommendation.upper())
+            if recommendation == "buy":
                 action_item.setForeground(QColor("#00c853"))
-            elif action == "sell":
+            elif recommendation == "sell":
                 action_item.setForeground(QColor("#ff1744"))
             self.symbol_table.setItem(i, 3, action_item)
 
