@@ -592,16 +592,19 @@ class MainWindow(QMainWindow):
         status_bar.addPermanentWidget(self.status_message)
 
     def update_positions_count(self, current: int, max_pos: int):
-        self.positions_label.setText(f"Positions: {current}/{max_pos}")
+        if hasattr(self, 'positions_label') and self.positions_label:
+            self.positions_label.setText(f"Positions: {current}/{max_pos}")
 
     def update_pnl(self, pnl: float):
-        color = COLORS['profit'] if pnl >= 0 else COLORS['loss']
-        sign = "+" if pnl >= 0 else ""
-        self.pnl_label.setText(f"Day P&L: {sign}${abs(pnl):,.2f}")
-        self.pnl_label.setStyleSheet(f"color: {color};")
+        if hasattr(self, 'pnl_label') and self.pnl_label:
+            color = COLORS['profit'] if pnl >= 0 else COLORS['loss']
+            sign = "+" if pnl >= 0 else ""
+            self.pnl_label.setText(f"Day P&L: {sign}${abs(pnl):,.2f}")
+            self.pnl_label.setStyleSheet(f"color: {color};")
 
     def set_status_message(self, message: str):
-        self.status_message.setText(message)
+        if hasattr(self, 'status_message') and self.status_message:
+            self.status_message.setText(message)
 
     def load_sample_data(self):
         """Load data - real from Alpaca if connected, otherwise sample"""
