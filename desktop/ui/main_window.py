@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
         self.day_trader.set_ai_worker(self.day_ai_worker)
         self.day_trader.set_position_monitor(self.position_monitor)
         self.day_trader.set_mode('day')
-        self.day_trader.config['max_positions'] = 2  # Max 2 day trades at a time
+        self.day_trader.config['max_positions'] = 4  # Max 4 day trades at a time
         self.day_trader.trade_executed.connect(self.on_auto_trade_executed)
         self.day_trader.signal_generated.connect(self.on_signal_generated)
         self.day_trader.status_update.connect(lambda s: self.on_trader_status(f"[DAY] {s}"))
@@ -278,7 +278,7 @@ class MainWindow(QMainWindow):
         self.swing_trader.set_ai_worker(self.swing_ai_worker)
         self.swing_trader.set_position_monitor(self.position_monitor)
         self.swing_trader.set_mode('swing')
-        self.swing_trader.config['max_positions'] = 2  # Max 2 swing trades at a time
+        self.swing_trader.config['max_positions'] = 4  # Max 4 swing trades at a time
         self.swing_trader.trade_executed.connect(self.on_auto_trade_executed)
         self.swing_trader.signal_generated.connect(self.on_signal_generated)
         self.swing_trader.status_update.connect(lambda s: self.on_trader_status(f"[SWING] {s}"))
@@ -1456,14 +1456,14 @@ class MainWindow(QMainWindow):
 
         # Apply trading settings to day trader
         if self.day_trader and trading.get('day_trading_enabled', True):
-            self.day_trader.config['max_positions'] = trading.get('max_positions', 2)
+            self.day_trader.config['max_positions'] = trading.get('max_positions', 4)
             self.day_trader.config['min_confidence'] = trading.get('min_confidence', 0.70)
             self.day_trader.config['stop_loss_pct'] = trading.get('day_stop_loss_pct', 0.02)
             self.day_trader.config['take_profit_pct'] = trading.get('day_take_profit_pct', 0.04)
 
         # Apply trading settings to swing trader
         if self.swing_trader and trading.get('swing_trading_enabled', True):
-            self.swing_trader.config['max_positions'] = trading.get('max_positions', 2)
+            self.swing_trader.config['max_positions'] = trading.get('max_positions', 4)
             self.swing_trader.config['min_confidence'] = trading.get('min_confidence', 0.70)
             self.swing_trader.config['stop_loss_pct'] = trading.get('swing_stop_loss_pct', 0.05)
             self.swing_trader.config['take_profit_pct'] = trading.get('swing_take_profit_pct', 0.12)
