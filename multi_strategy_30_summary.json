@@ -1,0 +1,186 @@
+{
+  "models": {
+    "Momentum_Selective": {
+      "strategy": "Momentum",
+      "win_rate": 94.83488411785653,
+      "total_trades": 17510346,
+      "simulations": 330434700
+    },
+    "Momentum_Moderate": {
+      "strategy": "Momentum",
+      "win_rate": 90.86918272550297,
+      "total_trades": 32247794,
+      "simulations": 330434700
+    },
+    "Momentum_Aggressive": {
+      "strategy": "Momentum",
+      "win_rate": 86.77271918344003,
+      "total_trades": 48938403,
+      "simulations": 330434700
+    },
+    "MeanReversion_Selective": {
+      "strategy": "MeanReversion",
+      "win_rate": 94.55016008760684,
+      "total_trades": 4352375,
+      "simulations": 330434700
+    },
+    "MeanReversion_Moderate": {
+      "strategy": "MeanReversion",
+      "win_rate": 90.93749040371263,
+      "total_trades": 5103025,
+      "simulations": 330434700
+    },
+    "MeanReversion_Aggressive": {
+      "strategy": "MeanReversion",
+      "win_rate": 87.14470939847648,
+      "total_trades": 5832439,
+      "simulations": 330434700
+    },
+    "Breakout_Selective": {
+      "strategy": "Breakout",
+      "win_rate": 88.87028327176058,
+      "total_trades": 4111566,
+      "simulations": 330434700
+    },
+    "Breakout_Moderate": {
+      "strategy": "Breakout",
+      "win_rate": 79.8357711812185,
+      "total_trades": 10294045,
+      "simulations": 330434700
+    },
+    "Breakout_Aggressive": {
+      "strategy": "Breakout",
+      "win_rate": 70.58897544350728,
+      "total_trades": 18345189,
+      "simulations": 330434700
+    },
+    "TrendFollowing_Selective": {
+      "strategy": "TrendFollowing",
+      "win_rate": 90.74780586599984,
+      "total_trades": 9206010,
+      "simulations": 330434700
+    },
+    "TrendFollowing_Moderate": {
+      "strategy": "TrendFollowing",
+      "win_rate": 83.43734765860667,
+      "total_trades": 22080141,
+      "simulations": 330434700
+    },
+    "TrendFollowing_Aggressive": {
+      "strategy": "TrendFollowing",
+      "win_rate": 76.42025876667518,
+      "total_trades": 37907315,
+      "simulations": 330434700
+    },
+    "GapTrading_Selective": {
+      "strategy": "GapTrading",
+      "win_rate": 89.92276530303747,
+      "total_trades": 33650601,
+      "simulations": 330434700
+    },
+    "GapTrading_Moderate": {
+      "strategy": "GapTrading",
+      "win_rate": 82.38208567442693,
+      "total_trades": 61492904,
+      "simulations": 330434700
+    },
+    "GapTrading_Aggressive": {
+      "strategy": "GapTrading",
+      "win_rate": 76.45536341947803,
+      "total_trades": 81420372,
+      "simulations": 330434700
+    },
+    "MultiIndicator_Selective": {
+      "strategy": "MultiIndicator",
+      "win_rate": 88.05157339896121,
+      "total_trades": 1015330,
+      "simulations": 330434700
+    },
+    "MultiIndicator_Moderate": {
+      "strategy": "MultiIndicator",
+      "win_rate": 79.80927423441906,
+      "total_trades": 2749793,
+      "simulations": 330434700
+    },
+    "VWAP_Selective": {
+      "strategy": "VWAP",
+      "win_rate": 90.01719942036819,
+      "total_trades": 32131504,
+      "simulations": 330434700
+    },
+    "VWAP_Moderate": {
+      "strategy": "VWAP",
+      "win_rate": 82.34946479670353,
+      "total_trades": 60166243,
+      "simulations": 330434700
+    },
+    "VWAP_Aggressive": {
+      "strategy": "VWAP",
+      "win_rate": 75.94843629445681,
+      "total_trades": 83266497,
+      "simulations": 330434700
+    },
+    "MultiIndicator_Aggressive": {
+      "strategy": "MultiIndicator",
+      "win_rate": 72.24297327024935,
+      "total_trades": 5309687,
+      "simulations": 330434700
+    },
+    "RSIDivergence_Selective": {
+      "strategy": "RSIDivergence",
+      "win_rate": 50.0,
+      "total_trades": 2,
+      "simulations": 121920770000
+    },
+    "RSIDivergence_Moderate": {
+      "strategy": "RSIDivergence",
+      "win_rate": 48.148148148148145,
+      "total_trades": 648,
+      "simulations": 121920770000
+    },
+    "RSIDivergence_Aggressive": {
+      "strategy": "RSIDivergence",
+      "win_rate": 45.37237740787698,
+      "total_trades": 24451,
+      "simulations": 121920770000
+    },
+    "BollingerBands_Selective": {
+      "strategy": "BollingerBands",
+      "win_rate": 76.45259938837921,
+      "total_trades": 327,
+      "simulations": 117241930000
+    },
+    "BollingerBands_Moderate": {
+      "strategy": "BollingerBands",
+      "win_rate": 67.96643632773939,
+      "total_trades": 2026,
+      "simulations": 117241930000
+    },
+    "BollingerBands_Aggressive": {
+      "strategy": "BollingerBands",
+      "win_rate": 52.41867043847242,
+      "total_trades": 10605,
+      "simulations": 117241930000
+    },
+    "VolumeSpike_Selective": {
+      "strategy": "VolumeSpike",
+      "win_rate": 70.58823529411765,
+      "total_trades": 17,
+      "simulations": 121920810000
+    },
+    "VolumeSpike_Moderate": {
+      "strategy": "VolumeSpike",
+      "win_rate": 64.07068062827224,
+      "total_trades": 3056,
+      "simulations": 121920810000
+    },
+    "VolumeSpike_Aggressive": {
+      "strategy": "VolumeSpike",
+      "win_rate": 50.17527707942353,
+      "total_trades": 28241,
+      "simulations": 121920810000
+    }
+  },
+  "total_models": 30,
+  "timestamp": "2026-01-24T13:30:52.176174"
+}
