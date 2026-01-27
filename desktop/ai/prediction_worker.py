@@ -224,6 +224,84 @@ class AIPredictionWorker(QThread):
             self.error.emit(f"All predictions error for {symbol}: {e}")
             return []
 
+    def get_best_signal_per_strategy(self, symbol: str, min_confidence: float = 0.65) -> Dict[str, Dict]:
+        """
+        Get the best signal from EACH strategy category.
+
+        Returns a dict mapping strategy name to best signal:
+        {
+            'Momentum': {'action': 'BUY', 'confidence': 0.85, 'model': 'Momentum_Selective', ...},
+            'MeanReversion': {'action': 'SELL', 'confidence': 0.78, 'model': 'MeanReversion_Moderate', ...},
+            ...
+        }
+
+        Each strategy can independently trigger trades.
+        """
+        if not self.ai_brain or not self.ai_brain.loaded:
+            return {}
+
+        if not self.broker:
+            return {}
+
+        try:
+            # Get timeframe config based on trading mode
+            config = self.timeframe_config[self.trading_mode]
+
+            # Fetch historical data
+            bars = self.broker.get_bars(
+                symbol=symbol,
+                timeframe=config['timeframe'],
+                limit=config['limit']
+            )
+
+            if not bars or len(bars) < config['min_bars']:
+                return {}
+
+            # Convert to DataFrame
+            df = pd.DataFrame(bars)
+            column_map = {
+                't': 'timestamp',
+                'o': 'open',
+                'h': 'high',
+                'l': 'low',
+                'c': 'close',
+                'v': 'volume',
+                'vw': 'vwap'
+            }
+            df = df.rename(columns=column_map)
+
+            # Get predictions from all models
+            all_predictions = self.ai_brain.get_all_predictions(df)
+
+            # Group by strategy and find the best signal in each
+            strategy_signals = {}
+
+            for pred in all_predictions:
+                model_name = pred.get('model', '')
+                action = pred.get('action', 'HOLD')
+                confidence = pred.get('confidence', 0)
+
+                # Skip HOLD signals or low confidence
+                if action == 'HOLD' or confidence < min_confidence:
+                    continue
+
+                # Extract strategy from model name (e.g., "Momentum_Selective" -> "Momentum")
+                strategy = model_name.rsplit('_', 1)[0] if '_' in model_name else model_name
+
+                # Keep the highest confidence signal for each strategy
+                if strategy not in strategy_signals or confidence > strategy_signals[strategy].get('confidence', 0):
+                    pred['symbol'] = symbol
+                    pred['strategy'] = strategy
+                    pred['timestamp'] = datetime.now().isoformat()
+                    pred['trading_mode'] = self.trading_mode
+                    strategy_signals[strategy] = pred
+
+            return strategy_signals
+
+        except Exception as e:
+            self.error.emit(f"Strategy signals error for {symbol}: {e}")
+            return {}
+
     def run(self):
         """Main worker loop - scans symbols periodically."""
         self.running = True
