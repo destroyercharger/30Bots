@@ -94,18 +94,39 @@ class PortfolioWidget(QWidget):
 
         # Total Value
         self.total_value_card = MetricCard("Total Value", "$100,000.00")
+        self.total_value_card.setToolTip(
+            "Total Portfolio Value\n\n"
+            "The combined value of all cash and open positions.\n"
+            "This is your total account equity including unrealized gains/losses."
+        )
         metrics_layout.addWidget(self.total_value_card, 0, 0)
 
         # Day P&L
         self.day_pnl_card = MetricCard("Day P&L", "$0.00")
+        self.day_pnl_card.setToolTip(
+            "Day Profit & Loss\n\n"
+            "Your total profit or loss for today.\n"
+            "Green = profit, Red = loss.\n"
+            "Includes both realized (closed) and unrealized (open) positions."
+        )
         metrics_layout.addWidget(self.day_pnl_card, 0, 1)
 
         # Available Cash
         self.cash_card = MetricCard("Available Cash", "$100,000.00")
+        self.cash_card.setToolTip(
+            "Available Cash (Buying Power)\n\n"
+            "The amount of cash available for new trades.\n"
+            "This excludes cash tied up in open positions."
+        )
         metrics_layout.addWidget(self.cash_card, 1, 0)
 
         # Positions
         self.positions_card = MetricCard("Open Positions", "0 / 6")
+        self.positions_card.setToolTip(
+            "Open Positions\n\n"
+            "Current / Maximum positions allowed.\n"
+            "When at maximum, the AI won't open new trades until a position closes."
+        )
         metrics_layout.addWidget(self.positions_card, 1, 1)
 
         layout.addLayout(metrics_layout)
@@ -116,10 +137,21 @@ class PortfolioWidget(QWidget):
 
         # Win Rate
         self.winrate_card = MetricCard("Win Rate", "--%")
+        self.winrate_card.setToolTip(
+            "Win Rate\n\n"
+            "Percentage of trades that were profitable.\n"
+            "Calculated as: (Winning Trades / Total Trades) x 100\n"
+            "A good win rate is 55%+ for day trading."
+        )
         extra_layout.addWidget(self.winrate_card)
 
         # Total Trades
         self.trades_card = MetricCard("Total Trades", "0")
+        self.trades_card.setToolTip(
+            "Total Trades\n\n"
+            "The total number of trades executed.\n"
+            "Includes both winning and losing trades."
+        )
         extra_layout.addWidget(self.trades_card)
 
         layout.addLayout(extra_layout)

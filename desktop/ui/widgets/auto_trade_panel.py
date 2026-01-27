@@ -175,6 +175,13 @@ class AutoTradingPanel(QWidget):
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["Day Trading", "Swing Trading"])
+        self.mode_combo.setToolTip(
+            "Trading Mode\n\n"
+            "Day Trading: Uses 5-minute candles, 2% stop loss, 4% take profit.\n"
+            "Positions are typically held for minutes to hours.\n\n"
+            "Swing Trading: Uses daily candles, 5% stop loss, 12% take profit.\n"
+            "Positions are typically held for days to weeks."
+        )
         self.mode_combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {COLORS['bg_light']};
@@ -208,6 +215,12 @@ class AutoTradingPanel(QWidget):
         self.max_positions_spin = QSpinBox()
         self.max_positions_spin.setRange(1, 10)
         self.max_positions_spin.setValue(4)
+        self.max_positions_spin.setToolTip(
+            "Maximum Positions\n\n"
+            "The maximum number of positions to hold at once.\n"
+            "Higher = more diversification but more capital required.\n"
+            "Recommended: 4-6 for $100k account."
+        )
         self.max_positions_spin.setStyleSheet(f"""
             QSpinBox {{
                 background-color: {COLORS['bg_light']};
@@ -229,6 +242,12 @@ class AutoTradingPanel(QWidget):
         self.min_confidence_spin.setRange(50, 95)
         self.min_confidence_spin.setValue(70)
         self.min_confidence_spin.setSuffix("%")
+        self.min_confidence_spin.setToolTip(
+            "Minimum Confidence\n\n"
+            "Only execute trades when AI model confidence is above this threshold.\n"
+            "Higher = fewer but more confident trades.\n"
+            "Recommended: 65-75% for balanced risk/reward."
+        )
         self.min_confidence_spin.setStyleSheet(f"""
             QSpinBox {{
                 background-color: {COLORS['bg_light']};
@@ -247,6 +266,11 @@ class AutoTradingPanel(QWidget):
         # Auto-execute checkbox
         self.auto_execute_check = QCheckBox("Auto-execute trades")
         self.auto_execute_check.setChecked(True)
+        self.auto_execute_check.setToolTip(
+            "Auto-Execute Trades\n\n"
+            "When checked: AI signals are automatically executed as trades.\n"
+            "When unchecked: Signals are logged but not executed (paper mode)."
+        )
         self.auto_execute_check.setStyleSheet(f"color: {COLORS['text_secondary']};")
         frame_layout.addWidget(self.auto_execute_check)
 
@@ -255,6 +279,11 @@ class AutoTradingPanel(QWidget):
         buttons_layout.setSpacing(8)
 
         self.start_button = QPushButton("▶ START")
+        self.start_button.setToolTip(
+            "Start Auto Trading\n\n"
+            "Begin scanning for trade signals and executing trades automatically.\n"
+            "The AI will analyze the watchlist and enter positions when signals are found."
+        )
         self.start_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {COLORS['profit']};
@@ -278,6 +307,12 @@ class AutoTradingPanel(QWidget):
 
         self.pause_button = QPushButton("⏸ PAUSE")
         self.pause_button.setEnabled(False)
+        self.pause_button.setToolTip(
+            "Pause/Resume Trading\n\n"
+            "Temporarily stop scanning for new signals.\n"
+            "Existing positions remain open and are still monitored.\n"
+            "Click again to resume trading."
+        )
         self.pause_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {COLORS['accent_yellow']};
@@ -301,6 +336,12 @@ class AutoTradingPanel(QWidget):
 
         self.stop_button = QPushButton("⏹ STOP")
         self.stop_button.setEnabled(False)
+        self.stop_button.setToolTip(
+            "Stop Auto Trading\n\n"
+            "Completely stop the auto trading system.\n"
+            "No new signals will be generated or executed.\n"
+            "Existing positions remain open."
+        )
         self.stop_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {COLORS['loss']};
@@ -326,6 +367,11 @@ class AutoTradingPanel(QWidget):
 
         # Close all button
         self.close_all_button = QPushButton("Close All Positions")
+        self.close_all_button.setToolTip(
+            "Close All Positions\n\n"
+            "Immediately sell all open positions at market price.\n"
+            "Use with caution - this action cannot be undone."
+        )
         self.close_all_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;

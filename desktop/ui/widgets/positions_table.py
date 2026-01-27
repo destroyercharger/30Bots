@@ -76,6 +76,11 @@ class PositionsTableWidget(QWidget):
                 color: white;
             }}
         """)
+        close_all_btn.setToolTip(
+            "Close All Positions\n\n"
+            "Immediately sell all open positions at market price.\n"
+            "Use with caution - this action cannot be undone."
+        )
         close_all_btn.clicked.connect(self.on_close_all)
         header_layout.addWidget(close_all_btn)
 
@@ -85,6 +90,24 @@ class PositionsTableWidget(QWidget):
         self.table = QTableWidget()
         self.table.setColumnCount(len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels([col[0] for col in self.COLUMNS])
+
+        # Column tooltips
+        column_tooltips = [
+            "Stock ticker symbol (e.g., AAPL, MSFT)",
+            "Number of shares in this position",
+            "Average price paid when entering the position",
+            "Current market price of the stock",
+            "Unrealized profit/loss in dollars",
+            "Unrealized profit/loss as a percentage",
+            "Price at which the position will auto-close to limit losses",
+            "Target price for taking profits",
+            "Risk score (0-100). Higher = riskier position",
+            "AI model that generated this trade signal"
+        ]
+        for i, tooltip in enumerate(column_tooltips):
+            item = self.table.horizontalHeaderItem(i)
+            if item:
+                item.setToolTip(tooltip)
 
         # Set column widths
         for i, (_, width) in enumerate(self.COLUMNS):

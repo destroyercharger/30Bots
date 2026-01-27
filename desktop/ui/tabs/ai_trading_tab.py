@@ -53,6 +53,11 @@ class WatchlistWidget(QFrame):
         self.symbol_input = QLineEdit()
         self.symbol_input.setPlaceholderText("Add symbol...")
         self.symbol_input.setMaxLength(5)
+        self.symbol_input.setToolTip(
+            "Add Symbol to Watchlist\n\n"
+            "Enter a stock ticker (e.g., AAPL, MSFT, GOOGL) and press Enter.\n"
+            "The AI will scan these symbols for trading opportunities."
+        )
         self.symbol_input.setStyleSheet(f"""
             QLineEdit {{
                 background-color: {COLORS['bg_light']};
@@ -67,6 +72,7 @@ class WatchlistWidget(QFrame):
 
         add_btn = QPushButton("+")
         add_btn.setFixedWidth(36)
+        add_btn.setToolTip("Add symbol to watchlist")
         add_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {COLORS['profit']};
@@ -209,6 +215,11 @@ class RecentTradesWidget(QFrame):
         # Header
         header = QLabel("Recent Trades")
         header.setStyleSheet(f"color: {COLORS['text_primary']}; font-weight: 600; font-size: 14px;")
+        header.setToolTip(
+            "Recent Trades\n\n"
+            "Shows the last 20 trades executed by the AI.\n"
+            "Includes time, symbol, side (buy/sell), P&L, and the AI model used."
+        )
         layout.addWidget(header)
 
         # Table
@@ -298,6 +309,12 @@ class ModelPerformanceWidget(QFrame):
         # Header
         header = QLabel("Model Performance (7 days)")
         header.setStyleSheet(f"color: {COLORS['text_primary']}; font-weight: 600; font-size: 14px;")
+        header.setToolTip(
+            "AI Model Performance\n\n"
+            "Shows how each AI model has performed over the last 7 days.\n"
+            "Win Rate: Percentage of profitable trades.\n"
+            "P&L: Total profit/loss from that model's trades."
+        )
         layout.addWidget(header)
 
         # Table

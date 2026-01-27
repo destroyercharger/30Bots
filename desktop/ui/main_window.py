@@ -576,6 +576,11 @@ class MainWindow(QMainWindow):
 
         # Positions count
         self.positions_label = QLabel("Positions: 0/6")
+        self.positions_label.setToolTip(
+            "Open Positions\n\n"
+            "Current number of open positions / Maximum allowed.\n"
+            "When at maximum, no new trades will be opened."
+        )
         status_bar.addWidget(self.positions_label)
 
         # Spacer
@@ -585,10 +590,19 @@ class MainWindow(QMainWindow):
 
         # P&L
         self.pnl_label = QLabel("Day P&L: $0.00")
+        self.pnl_label.setToolTip(
+            "Day Profit & Loss\n\n"
+            "Your total profit or loss for today.\n"
+            "Includes both realized and unrealized gains/losses."
+        )
         status_bar.addWidget(self.pnl_label)
 
         # Permanent message on the right
         self.status_message = QLabel("Ready")
+        self.status_message.setToolTip(
+            "System Status\n\n"
+            "Shows the current status of the trading system."
+        )
         status_bar.addPermanentWidget(self.status_message)
 
     def update_positions_count(self, current: int, max_pos: int):
