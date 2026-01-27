@@ -51,25 +51,13 @@ class AutoTrader(QThread):
         # Trading configuration
         self.config = {
             'mode': 'day',  # 'day' or 'swing'
-            'max_positions': 8,  # Total max across all strategies
-            'max_positions_per_strategy': 2,  # Max positions per strategy type
+            'max_positions': 6,  # Total max positions
             'position_size_pct': 0.10,  # 10% of portfolio per position
-            'min_confidence': 0.65,  # Minimum AI confidence (lowered from 0.70)
+            'min_confidence': 0.65,  # Minimum AI confidence
             'scan_interval': 30000,  # 30 seconds
             'market_hours_only': True,
             'auto_execute': True,  # Auto-execute trades or just signal
-            'strategy_mode': True,  # Enable per-strategy execution (all strategies evaluate)
         }
-
-        # Strategy categories (extracted from model names like "Momentum_Selective")
-        self.strategy_types = [
-            'Momentum', 'MeanReversion', 'Breakout', 'TrendFollowing',
-            'GapTrading', 'MultiIndicator', 'VWAP', 'RSIDivergence',
-            'BollingerBands', 'VolumeSpike'
-        ]
-
-        # Track positions by strategy
-        self.positions_by_strategy: Dict[str, List[str]] = {s: [] for s in self.strategy_types}
 
         # Day trading settings
         self.day_settings = {
@@ -190,27 +178,6 @@ class AutoTrader(QThread):
             self.error.emit(f"Position size error: {e}")
             return 0
 
-    def get_strategy_from_model(self, model_name: str) -> str:
-        """Extract strategy type from model name (e.g., 'Momentum_Selective' -> 'Momentum')."""
-        if '_' in model_name:
-            return model_name.rsplit('_', 1)[0]
-        return model_name
-
-    def can_strategy_open_position(self, strategy: str) -> bool:
-        """Check if a specific strategy can open a new position."""
-        # Check total positions limit first
-        if not self.can_open_position():
-            return False
-
-        # Check per-strategy limit
-        current_count = len(self.positions_by_strategy.get(strategy, []))
-        max_per_strategy = self.config.get('max_positions_per_strategy', 2)
-
-        if current_count >= max_per_strategy:
-            return False
-
-        return True
-
     def can_open_position(self) -> bool:
         """Check if we can open a new position based on ACTUAL broker positions."""
         # Check actual broker positions, not just internally tracked ones
@@ -263,28 +230,20 @@ class AutoTrader(QThread):
 
         return None
 
-    def execute_trade(self, signal: Dict):
-        """Execute a trade based on AI signal (BUY or SELL)."""
+    def execute_trade(self, signal: Dict) -> bool:
+        """Execute a trade based on AI signal (BUY or SELL). Returns True if executed."""
         symbol = signal.get('symbol')
         action = signal.get('action')
         confidence = signal.get('confidence', 0)
         model = signal.get('model', 'Unknown')
-        strategy = signal.get('strategy') or self.get_strategy_from_model(model)
 
         # Accept both BUY and SELL signals
         if action not in ('BUY', 'SELL'):
-            return
+            return False
 
-        # Check strategy-specific limits if strategy mode is enabled
-        if self.config.get('strategy_mode', True):
-            if not self.can_strategy_open_position(strategy):
-                max_per = self.config.get('max_positions_per_strategy', 2)
-                current = len(self.positions_by_strategy.get(strategy, []))
-                self.status_update.emit(f"{strategy} at max ({current}/{max_per}), skipping {symbol}")
-                return
-        elif not self.can_open_position():
+        if not self.can_open_position():
             self.status_update.emit(f"Max positions reached, skipping {symbol}")
-            return
+            return False
 
         # Check ACTUAL broker positions - don't open opposite position if we already have one
         # Positions should only close via stop loss, take profit, or trailing stop
@@ -297,40 +256,40 @@ class AutoTrader(QThread):
                     # If we have a SHORT and get BUY signal, skip (let stops handle exit)
                     if (existing_qty > 0 and action == 'SELL') or (existing_qty < 0 and action == 'BUY'):
                         print(f"[AutoTrader] Skipping {action} {symbol} - holding position for stop/profit exit")
-                        return
+                        return False
                     # If same direction, skip (already have position)
                     if (existing_qty > 0 and action == 'BUY') or (existing_qty < 0 and action == 'SELL'):
                         self.status_update.emit(f"Already have position in {symbol}")
-                        return
+                        return False
             except Exception as e:
                 print(f"[AutoTrader] Error checking positions: {e}")
 
         if self.has_position(symbol):
             self.status_update.emit(f"Already have position in {symbol}")
-            return
+            return False
 
         if confidence < self.config['min_confidence']:
             self.status_update.emit(f"{symbol} confidence too low: {confidence*100:.1f}%")
-            return
+            return False
 
         if not self.broker:
             self.error.emit("No broker connected")
-            return
+            return False
 
         try:
             # Get current price
             snapshot = self.broker.get_snapshot(symbol)
             if not snapshot:
-                return
+                return False
 
             current_price = snapshot.get('price', 0)
             if current_price <= 0:
-                return
+                return False
 
             # Calculate position size
             shares = self.calculate_position_size(current_price)
             if shares <= 0:
-                return
+                return False
 
             # Get risk settings (from AI or defaults)
             risk = self.get_risk_settings()
@@ -386,15 +345,9 @@ class AutoTrader(QThread):
                         'stop_loss': stop_price,
                         'take_profit': target_price,
                         'model': model,
-                        'strategy': strategy,
                         'confidence': confidence,
                         'entry_time': datetime.now().isoformat()
                     }
-
-                    # Track by strategy
-                    if strategy in self.positions_by_strategy:
-                        if symbol not in self.positions_by_strategy[strategy]:
-                            self.positions_by_strategy[strategy].append(symbol)
 
                     self.session_stats['trades'] += 1
 
@@ -417,9 +370,12 @@ class AutoTrader(QThread):
                         f"{action} {shares} {symbol} @ ${current_price:.2f} "
                         f"(SL: ${stop_price:.2f}, TP: ${target_price:.2f})"
                     )
+                    return True
 
         except Exception as e:
             self.error.emit(f"Trade execution error: {e}")
+
+        return False
 
     def on_trade_closed(self, result: Dict):
         """Handle trade closed from position monitor."""
@@ -433,24 +389,19 @@ class AutoTrader(QThread):
             self.session_stats['losses'] += 1
         self.session_stats['pnl'] += pnl
 
-        # Get strategy before removing position
-        strategy = None
+        # Get model before removing position
+        model = None
         if symbol in self.active_positions:
-            strategy = self.active_positions[symbol].get('strategy')
+            model = self.active_positions[symbol].get('model')
             del self.active_positions[symbol]
-
-        # Remove from strategy tracking
-        if strategy and strategy in self.positions_by_strategy:
-            if symbol in self.positions_by_strategy[strategy]:
-                self.positions_by_strategy[strategy].remove(symbol)
 
         # Emit updated stats
         self.stats_updated.emit(self.get_stats())
 
         status = "WIN" if pnl > 0 else "LOSS"
-        strategy_info = f" [{strategy}]" if strategy else ""
+        model_info = f" [{model}]" if model else ""
         self.status_update.emit(
-            f"CLOSED {symbol}{strategy_info}: {status} ${pnl:+.2f} ({result.get('exit_reason', 'unknown')})"
+            f"CLOSED {symbol}{model_info}: {status} ${pnl:+.2f} ({result.get('exit_reason', 'unknown')})"
         )
 
     def get_stats(self) -> Dict:
@@ -465,32 +416,13 @@ class AutoTrader(QThread):
             'win_rate': win_rate,
             'pnl': self.session_stats['pnl'],
             'signals': self.session_stats['signals'],
-            'active_positions': len(self.active_positions),
-            'positions_by_strategy': {s: len(p) for s, p in self.positions_by_strategy.items() if p}
+            'active_positions': len(self.active_positions)
         }
-
-    def get_strategy_stats(self) -> Dict[str, Dict]:
-        """Get detailed stats for each strategy."""
-        stats = {}
-        max_per = self.config.get('max_positions_per_strategy', 2)
-
-        for strategy in self.strategy_types:
-            positions = self.positions_by_strategy.get(strategy, [])
-            stats[strategy] = {
-                'positions': len(positions),
-                'max': max_per,
-                'available': max_per - len(positions),
-                'symbols': list(positions)
-            }
-
-        return stats
 
     def run(self):
         """Main trading loop."""
         self.running = True
-        strategy_mode = self.config.get('strategy_mode', True)
-        mode_desc = "STRATEGY" if strategy_mode else "SINGLE"
-        print(f"[AutoTrader] Started in {self.config['mode'].upper()} mode ({mode_desc} - each strategy trades independently)")
+        print(f"[AutoTrader] Started in {self.config['mode'].upper()} mode (All models evaluate)")
         self.status_update.emit(f"Auto trader started ({self.config['mode'].upper()} mode)")
 
         scan_count = 0
@@ -511,7 +443,7 @@ class AutoTrader(QThread):
             self.mutex.unlock()
 
             scan_count += 1
-            print(f"[AutoTrader] Scan #{scan_count} - Scanning {len(symbols)} symbols...")
+            print(f"[AutoTrader] Scan #{scan_count} - Scanning {len(symbols)} symbols (all 30 models)...")
 
             signals_found = 0
             trades_executed = 0
@@ -524,65 +456,54 @@ class AutoTrader(QThread):
                 if self.has_position(symbol):
                     continue
 
-                # Use strategy-based scanning if enabled
-                if strategy_mode and self.ai_worker:
-                    # Get best signal from EACH strategy
-                    strategy_signals = self.ai_worker.get_best_signal_per_strategy(
-                        symbol,
-                        min_confidence=self.config['min_confidence']
-                    )
+                # Check if we can open more positions
+                if not self.can_open_position():
+                    print(f"[AutoTrader] Max positions reached ({self.config['max_positions']})")
+                    break
 
-                    for strategy, signal in strategy_signals.items():
+                # Get predictions from ALL models, sorted by win rate
+                if self.ai_worker:
+                    all_predictions = self.ai_worker.get_all_model_predictions(symbol)
+
+                    # Sort by confidence (highest first)
+                    all_predictions.sort(key=lambda x: x.get('confidence', 0), reverse=True)
+
+                    # Go through each model's prediction
+                    for prediction in all_predictions:
                         if not self.running or self.paused:
                             break
 
-                        action = signal.get('action')
-                        confidence = signal.get('confidence', 0)
-                        model = signal.get('model', 'Unknown')
+                        action = prediction.get('action', 'HOLD')
+                        confidence = prediction.get('confidence', 0)
+                        model = prediction.get('model', 'Unknown')
+
+                        # Skip HOLD signals or low confidence
+                        if action == 'HOLD':
+                            continue
+
+                        if confidence < self.config['min_confidence']:
+                            continue
 
                         signals_found += 1
-                        print(f"[AutoTrader] SIGNAL [{strategy}]: {action} {symbol} ({confidence*100:.1f}% - {model})")
-                        self.signal_generated.emit(signal)
+                        prediction['symbol'] = symbol
+                        print(f"[AutoTrader] SIGNAL: {action} {symbol} ({confidence*100:.1f}% - {model})")
+                        self.signal_generated.emit(prediction)
 
                         if self.config['auto_execute']:
-                            # Check if this strategy can open a position
-                            if self.can_strategy_open_position(strategy):
-                                print(f"[AutoTrader] Executing {action} trade for {symbol} [{strategy}]...")
-                                self.execute_trade(signal)
+                            print(f"[AutoTrader] Trying {action} trade for {symbol} via {model}...")
+                            success = self.execute_trade(prediction)
+                            if success:
                                 trades_executed += 1
+                                break  # Trade executed, move to next symbol
                             else:
-                                max_per = self.config.get('max_positions_per_strategy', 2)
-                                current = len(self.positions_by_strategy.get(strategy, []))
-                                print(f"[AutoTrader] {strategy} at limit ({current}/{max_per}), skipping {symbol}")
-                else:
-                    # Original single-signal mode
-                    signal = self.scan_symbol(symbol)
+                                print(f"[AutoTrader] {model} signal didn't execute, trying next model...")
+                                continue  # Try next model in the list
 
-                    if signal and signal.get('action') in ('BUY', 'SELL'):
-                        signals_found += 1
-                        action = signal.get('action')
-                        confidence = signal.get('confidence', 0)
-                        model = signal.get('model', 'Unknown')
-                        print(f"[AutoTrader] SIGNAL: {action} {symbol} ({confidence*100:.1f}% - {model})")
-                        self.signal_generated.emit(signal)
-
-                        if self.config['auto_execute'] and confidence >= self.config['min_confidence']:
-                            print(f"[AutoTrader] Executing {action} trade for {symbol}...")
-                            self.execute_trade(signal)
-                            trades_executed += 1
-
-                # Small delay between scans
+                # Small delay between symbols
                 self.msleep(500)
 
             # Summary after each scan
-            if signals_found > 0:
-                print(f"[AutoTrader] Scan complete: {signals_found} signals, {trades_executed} trades executed")
-                # Show strategy position counts
-                active_strategies = {s: len(p) for s, p in self.positions_by_strategy.items() if p}
-                if active_strategies:
-                    print(f"[AutoTrader] Positions by strategy: {active_strategies}")
-            else:
-                print(f"[AutoTrader] Scan complete: No actionable signals")
+            print(f"[AutoTrader] Scan complete: {signals_found} signals, {trades_executed} trades")
 
             # Wait before next scan cycle
             print(f"[AutoTrader] Next scan in {self.config['scan_interval']//1000}s...")
