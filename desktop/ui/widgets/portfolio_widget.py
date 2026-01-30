@@ -26,13 +26,14 @@ class MetricCard(QFrame):
 
     def setup_ui(self, title: str, value: str):
         self.setStyleSheet(f"""
-            QFrame {{
+            MetricCard {{
                 background-color: {COLORS['bg_card']};
                 border: 1px solid {COLORS['border']};
                 border-radius: 8px;
-                padding: 12px;
-                min-width: 120px;
-                min-height: 70px;
+            }}
+            MetricCard QLabel {{
+                background-color: transparent;
+                border: none;
             }}
         """)
 
@@ -46,8 +47,8 @@ class MetricCard(QFrame):
             font-size: 11px;
             font-weight: 500;
             color: {COLORS['text_secondary']};
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            background-color: transparent;
+            border: none;
         """)
         layout.addWidget(self.title_label)
 
@@ -57,17 +58,21 @@ class MetricCard(QFrame):
             font-size: 24px;
             font-weight: 600;
             color: {COLORS['text_primary']};
+            background-color: transparent;
+            border: none;
         """)
         layout.addWidget(self.value_label)
 
     def set_value(self, value: str, color: str = None):
         self.value_label.setText(value)
-        if color:
-            self.value_label.setStyleSheet(f"""
-                font-size: 24px;
-                font-weight: 600;
-                color: {color};
-            """)
+        text_color = color if color else COLORS['text_primary']
+        self.value_label.setStyleSheet(f"""
+            font-size: 24px;
+            font-weight: 600;
+            color: {text_color};
+            background-color: transparent;
+            border: none;
+        """)
 
 
 class PortfolioWidget(QWidget):

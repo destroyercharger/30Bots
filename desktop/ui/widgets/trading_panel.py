@@ -6,7 +6,7 @@ Buy/Sell buttons and order entry
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QFrame,
-    QMessageBox, QGroupBox
+    QMessageBox, QGroupBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QDoubleValidator, QIntValidator
@@ -36,35 +36,66 @@ class TradingPanel(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 0, 8)
         layout.setSpacing(12)
 
         # Header
         header = QLabel("Quick Trade")
         header.setStyleSheet(f"""
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
             color: {COLORS['text_primary']};
+            background-color: transparent;
         """)
         layout.addWidget(header)
 
         # Main trading frame
         trade_frame = QFrame()
+        trade_frame.setObjectName("tradeFrame")
+        # Dynamic sizing - no fixed minimum height
         trade_frame.setStyleSheet(f"""
-            QFrame {{
+            #tradeFrame {{
                 background-color: {COLORS['bg_card']};
                 border: 1px solid {COLORS['border']};
-                border-radius: 8px;
+                border-radius: 10px;
+            }}
+            #tradeFrame QLabel {{
+                background-color: transparent;
+                border: none;
+                color: {COLORS['text_primary']};
+            }}
+            #tradeFrame QLineEdit {{
+                background-color: {COLORS['bg_light']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                padding: 8px;
+                color: {COLORS['text_primary']};
+                font-size: 14px;
+            }}
+            #tradeFrame QSpinBox, #tradeFrame QDoubleSpinBox {{
+                background-color: {COLORS['bg_light']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                padding: 8px;
+                color: {COLORS['text_primary']};
+            }}
+            #tradeFrame QComboBox {{
+                background-color: {COLORS['bg_light']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                padding: 8px;
+                color: {COLORS['text_primary']};
             }}
         """)
         frame_layout = QVBoxLayout(trade_frame)
-        frame_layout.setContentsMargins(16, 12, 16, 12)
-        frame_layout.setSpacing(12)
+        frame_layout.setContentsMargins(10, 10, 10, 10)
+        frame_layout.setSpacing(6)
 
         # Symbol row
         symbol_layout = QHBoxLayout()
+        symbol_layout.setSpacing(8)
         symbol_label = QLabel("Symbol:")
-        symbol_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 60px;")
+        symbol_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 45px; background: transparent;")
         symbol_layout.addWidget(symbol_label)
 
         self.symbol_input = QLineEdit("AAPL")
@@ -89,15 +120,18 @@ class TradingPanel(QWidget):
 
         # Price display
         price_layout = QHBoxLayout()
+        price_layout.setSpacing(6)
         price_label = QLabel("Price:")
-        price_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 60px;")
+        price_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 50px; background: transparent;")
         price_layout.addWidget(price_label)
 
         self.price_display = QLabel("$0.00")
+        self.price_display.setMinimumHeight(24)
         self.price_display.setStyleSheet(f"""
             font-size: 18px;
             font-weight: 700;
             color: {COLORS['text_primary']};
+            background: transparent;
         """)
         price_layout.addWidget(self.price_display)
         price_layout.addStretch()
@@ -105,8 +139,9 @@ class TradingPanel(QWidget):
 
         # Quantity row
         qty_layout = QHBoxLayout()
+        qty_layout.setSpacing(6)
         qty_label = QLabel("Shares:")
-        qty_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 60px;")
+        qty_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 50px; background: transparent;")
         qty_layout.addWidget(qty_label)
 
         self.qty_spin = QSpinBox()
@@ -131,15 +166,17 @@ class TradingPanel(QWidget):
         # Quick quantity buttons
         for qty in [1, 10, 50, 100]:
             btn = QPushButton(str(qty))
-            btn.setFixedWidth(40)
+            btn.setMinimumWidth(28)
+            btn.setMaximumWidth(40)
+            btn.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {COLORS['bg_light']};
                     color: {COLORS['text_secondary']};
                     border: 1px solid {COLORS['border']};
                     border-radius: 4px;
-                    padding: 4px;
-                    font-size: 11px;
+                    padding: 3px 2px;
+                    font-size: 10px;
                 }}
                 QPushButton:hover {{
                     border-color: {COLORS['accent_blue']};
@@ -152,8 +189,9 @@ class TradingPanel(QWidget):
 
         # Order type row
         type_layout = QHBoxLayout()
+        type_layout.setSpacing(6)
         type_label = QLabel("Type:")
-        type_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 60px;")
+        type_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 50px; background: transparent;")
         type_layout.addWidget(type_label)
 
         self.order_type = QComboBox()
@@ -165,7 +203,7 @@ class TradingPanel(QWidget):
                 border-radius: 4px;
                 padding: 8px;
                 color: {COLORS['text_primary']};
-                min-width: 100px;
+                min-width: 70px;
             }}
             QComboBox:focus {{
                 border-color: {COLORS['accent_blue']};
@@ -204,15 +242,18 @@ class TradingPanel(QWidget):
 
         # Estimated total
         total_layout = QHBoxLayout()
+        total_layout.setSpacing(6)
         total_label = QLabel("Est. Total:")
-        total_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 60px;")
+        total_label.setStyleSheet(f"color: {COLORS['text_secondary']}; min-width: 50px; background: transparent;")
         total_layout.addWidget(total_label)
 
         self.total_display = QLabel("$0.00")
+        self.total_display.setMinimumHeight(22)
         self.total_display.setStyleSheet(f"""
             font-size: 16px;
             font-weight: 600;
             color: {COLORS['text_primary']};
+            background: transparent;
         """)
         total_layout.addWidget(self.total_display)
         total_layout.addStretch()
@@ -229,51 +270,31 @@ class TradingPanel(QWidget):
         buttons_layout.setSpacing(12)
 
         self.buy_button = QPushButton("BUY")
+        self.buy_button.setMinimumHeight(28)
+        self.buy_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.buy_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {COLORS['profit']};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 14px 24px;
-                font-size: 16px;
-                font-weight: 700;
-            }}
-            QPushButton:hover {{
-                background-color: #00c853;
-            }}
-            QPushButton:pressed {{
-                background-color: #009624;
-            }}
-            QPushButton:disabled {{
-                background-color: {COLORS['bg_light']};
-                color: {COLORS['text_muted']};
-            }}
+            background-color: {COLORS['profit']};
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 700;
         """)
         self.buy_button.clicked.connect(self.on_buy_clicked)
         buttons_layout.addWidget(self.buy_button)
 
         self.sell_button = QPushButton("SELL")
+        self.sell_button.setMinimumHeight(28)
+        self.sell_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.sell_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {COLORS['loss']};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 14px 24px;
-                font-size: 16px;
-                font-weight: 700;
-            }}
-            QPushButton:hover {{
-                background-color: #ff1744;
-            }}
-            QPushButton:pressed {{
-                background-color: #c4001d;
-            }}
-            QPushButton:disabled {{
-                background-color: {COLORS['bg_light']};
-                color: {COLORS['text_muted']};
-            }}
+            background-color: {COLORS['loss']};
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 700;
         """)
         self.sell_button.clicked.connect(self.on_sell_clicked)
         buttons_layout.addWidget(self.sell_button)
@@ -281,35 +302,34 @@ class TradingPanel(QWidget):
         frame_layout.addLayout(buttons_layout)
 
         # AI Scan button
-        self.ai_scan_button = QPushButton("🤖 AI Scan")
+        self.ai_scan_button = QPushButton("AI Scan")
+        self.ai_scan_button.setMinimumHeight(26)
+        self.ai_scan_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.ai_scan_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {COLORS['accent_blue']};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 24px;
-                font-size: 14px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background-color: #2196f3;
-            }}
-            QPushButton:pressed {{
-                background-color: #1565c0;
-            }}
+            background-color: {COLORS['accent_blue']};
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 600;
         """)
         self.ai_scan_button.clicked.connect(self.on_ai_scan_clicked)
         frame_layout.addWidget(self.ai_scan_button)
 
         # AI Risk Parameters display (hidden by default)
         self.ai_params_frame = QFrame()
+        self.ai_params_frame.setObjectName("aiParamsFrame")
         self.ai_params_frame.setStyleSheet(f"""
-            QFrame {{
+            #aiParamsFrame {{
                 background-color: {COLORS['bg_light']};
                 border: 1px solid {COLORS['accent_blue']};
                 border-radius: 4px;
                 padding: 8px;
+            }}
+            #aiParamsFrame QLabel {{
+                background-color: transparent;
+                border: none;
             }}
         """)
         self.ai_params_frame.setVisible(False)
@@ -385,6 +405,69 @@ class TradingPanel(QWidget):
         """Handle symbol input change"""
         self.current_symbol = text.upper()
         self.symbol_input.setText(self.current_symbol)
+        # Auto-fetch price when symbol changes (with debounce)
+        if len(self.current_symbol) >= 1:
+            from PyQt6.QtCore import QTimer
+            # Cancel previous timer if exists
+            if hasattr(self, '_price_fetch_timer') and self._price_fetch_timer:
+                self._price_fetch_timer.stop()
+            # Start new timer (500ms debounce)
+            self._price_fetch_timer = QTimer()
+            self._price_fetch_timer.setSingleShot(True)
+            self._price_fetch_timer.timeout.connect(self._fetch_price_for_symbol)
+            self._price_fetch_timer.start(500)
+
+    def _fetch_price_for_symbol(self):
+        """Fetch price for current symbol from broker using yfinance as fallback"""
+        if not self.current_symbol:
+            return
+        try:
+            self.status_label.setText(f"Fetching {self.current_symbol}...")
+            self.status_label.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px;")
+
+            price = 0.0
+
+            # Try broker first if available
+            if self.broker:
+                try:
+                    snapshot = self.broker.get_snapshot(self.current_symbol)
+                    if snapshot:
+                        if 'latestTrade' in snapshot and snapshot['latestTrade']:
+                            price = float(snapshot['latestTrade'].get('p', 0) or 0)
+                        elif 'latestQuote' in snapshot and snapshot['latestQuote']:
+                            bid = float(snapshot['latestQuote'].get('bp', 0) or 0)
+                            ask = float(snapshot['latestQuote'].get('ap', 0) or 0)
+                            if bid > 0 and ask > 0:
+                                price = (bid + ask) / 2
+                except Exception:
+                    pass  # Fall through to yfinance
+
+            # Fallback to yfinance if broker fails or no price
+            if price <= 0:
+                try:
+                    import yfinance as yf
+                    ticker = yf.Ticker(self.current_symbol)
+                    info = ticker.fast_info
+                    price = float(info.get('lastPrice', 0) or info.get('regularMarketPrice', 0) or 0)
+                except Exception:
+                    pass
+
+            if price > 0:
+                # Update price display directly
+                self.current_price = price
+                self.price_display.setText(f"${price:,.2f}")
+                self.limit_price_input.setValue(price)
+                self.update_total()
+                # Force UI refresh
+                self.price_display.repaint()
+                self.status_label.setText(f"{self.current_symbol}: ${price:,.2f}")
+                self.status_label.setStyleSheet(f"color: {COLORS['profit']}; font-size: 12px;")
+            else:
+                self.status_label.setText(f"No price data for {self.current_symbol}")
+                self.status_label.setStyleSheet(f"color: {COLORS['loss']}; font-size: 12px;")
+        except Exception as e:
+            self.status_label.setText(f"Error: {str(e)[:30]}")
+            self.status_label.setStyleSheet(f"color: {COLORS['loss']}; font-size: 12px;")
 
     def on_order_type_changed(self, order_type: str):
         """Handle order type change"""
