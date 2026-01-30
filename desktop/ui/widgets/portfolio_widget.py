@@ -21,6 +21,8 @@ class MetricCard(QFrame):
     def __init__(self, title: str, value: str = "--", parent=None):
         super().__init__(parent)
         self.setup_ui(title, value)
+        # Set minimum size to prevent squishing
+        self.setMinimumSize(140, 80)
 
     def setup_ui(self, title: str, value: str):
         self.setStyleSheet(f"""
@@ -29,6 +31,8 @@ class MetricCard(QFrame):
                 border: 1px solid {COLORS['border']};
                 border-radius: 8px;
                 padding: 12px;
+                min-width: 120px;
+                min-height: 70px;
             }}
         """)
 
@@ -75,22 +79,23 @@ class PortfolioWidget(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 8)  # Bottom margin
+        layout.setSpacing(16)
 
         # Header
         header = QLabel("Portfolio Summary")
         header.setStyleSheet(f"""
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
             color: {COLORS['text_primary']};
-            padding-bottom: 8px;
+            padding-bottom: 4px;
         """)
         layout.addWidget(header)
 
         # Metrics grid
         metrics_layout = QGridLayout()
-        metrics_layout.setSpacing(12)
+        metrics_layout.setSpacing(16)  # More space between cards
+        metrics_layout.setContentsMargins(0, 0, 0, 0)
 
         # Total Value
         self.total_value_card = MetricCard("Total Value", "$100,000.00")
@@ -158,6 +163,7 @@ class PortfolioWidget(QWidget):
 
     def update_portfolio(self, data: dict):
         """Update all portfolio metrics"""
+
         # Total value
         total_value = data.get('total_value', 0)
         self.total_value_card.set_value(f"${total_value:,.2f}")
@@ -184,3 +190,6 @@ class PortfolioWidget(QWidget):
         # Total trades
         total_trades = data.get('total_trades', 0)
         self.trades_card.set_value(str(total_trades))
+
+        # Force visual update
+        self.repaint()

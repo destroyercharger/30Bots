@@ -30,13 +30,13 @@ class ActivityLogWidget(QWidget):
 
     def setup_ui(self, title: str):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 8)  # Bottom margin
+        layout.setSpacing(10)
 
         # Header
         header = QLabel(title)
         header.setStyleSheet(f"""
-            font-size: 14px;
+            font-size: 15px;
             font-weight: 600;
             color: {COLORS['text_primary']};
         """)
@@ -49,11 +49,12 @@ class ActivityLogWidget(QWidget):
             QTextEdit {{
                 background-color: {COLORS['bg_card']};
                 border: 1px solid {COLORS['border']};
-                border-radius: 4px;
-                padding: 8px;
-                font-family: 'Consolas', 'Monaco', monospace;
+                border-radius: 8px;
+                padding: 12px;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
                 font-size: 12px;
                 color: {COLORS['text_secondary']};
+                line-height: 1.5;
             }}
         """)
         layout.addWidget(self.log_display)
@@ -102,18 +103,18 @@ class ModelPredictionWidget(QFrame):
             QFrame {{
                 background-color: {COLORS['bg_card']};
                 border: 1px solid {COLORS['border']};
-                border-radius: 8px;
+                border-radius: 10px;
             }}
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 16, 20, 16)  # More padding
+        layout.setSpacing(10)
 
         # Header
-        header = QLabel("30-Model AI Prediction")
+        header = QLabel("AI Prediction")
         header.setStyleSheet(f"""
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 600;
             color: {COLORS['text_primary']};
         """)
@@ -184,20 +185,32 @@ class DashboardTab(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)  # More outer padding
+        layout.setSpacing(20)  # More space between major sections
 
         # Main splitter (horizontal)
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_splitter.setHandleWidth(8)  # Wider splitter handle
+        main_splitter.setStyleSheet(f"""
+            QSplitter::handle {{
+                background-color: {COLORS['bg_medium']};
+                margin: 4px 2px;
+            }}
+            QSplitter::handle:hover {{
+                background-color: {COLORS['border_light']};
+            }}
+        """)
 
         # Left side - Portfolio, Chart, and Positions
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(16)
+        left_layout.setContentsMargins(0, 0, 12, 0)  # Right margin for splitter
+        left_layout.setSpacing(20)  # More space between widgets
 
         # Portfolio widget
         self.portfolio_widget = PortfolioWidget()
+        self.portfolio_widget.setMinimumHeight(220)
+        self.portfolio_widget.setMaximumHeight(280)
         left_layout.addWidget(self.portfolio_widget)
 
         # Vertical splitter for chart and positions
@@ -221,9 +234,10 @@ class DashboardTab(QWidget):
 
         # Right side - Trading Panel, AI Predictions, and Activity Logs
         right_widget = QWidget()
+        right_widget.setMinimumWidth(380)  # Ensure trading panel has enough space
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(16)
+        right_layout.setContentsMargins(12, 0, 0, 0)  # Left margin for splitter
+        right_layout.setSpacing(20)  # More space between widgets
 
         # Trading panel
         self.trading_panel = TradingPanel()
@@ -248,8 +262,8 @@ class DashboardTab(QWidget):
 
         main_splitter.addWidget(right_widget)
 
-        # Set splitter sizes (70/30 split)
-        main_splitter.setSizes([700, 300])
+        # Set splitter sizes (65/35 split for more trading panel space)
+        main_splitter.setSizes([650, 400])
 
         layout.addWidget(main_splitter)
 

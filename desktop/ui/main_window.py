@@ -22,7 +22,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from config import (
     APP_NAME, APP_VERSION, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT,
-    PRICE_UPDATE_INTERVAL, ALPACA_API_KEY, ALPACA_SECRET_KEY
+    PRICE_UPDATE_INTERVAL, ALPACA_API_KEY, ALPACA_SECRET_KEY,
+    ALPACA_50K_API_KEY, ALPACA_50K_SECRET_KEY,
+    ALPACA_100K_API_KEY, ALPACA_100K_SECRET_KEY
 )
 from ui.styles import DARK_THEME, COLORS
 from ui.tabs.dashboard_tab import DashboardTab
@@ -188,6 +190,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Clean up on window close"""
+        # Stop portfolio refresh timer
+        if hasattr(self, 'portfolio_refresh_timer'):
+            self.portfolio_refresh_timer.stop()
         # Stop dual mode traders
         if self.day_trader:
             self.day_trader.stop()
@@ -244,81 +249,134 @@ class MainWindow(QMainWindow):
 
     def setup_trading_engine(self):
         """Initialize the automated trading engine with dual mode support."""
-        # Position monitor (shared between both traders)
-        self.position_monitor = PositionMonitor(broker=self.broker)
-        self.position_monitor.stop_loss_triggered.connect(self.on_stop_loss_triggered)
-        self.position_monitor.take_profit_triggered.connect(self.on_take_profit_triggered)
-        self.position_monitor.trailing_stop_triggered.connect(self.on_trailing_stop_triggered)
-        self.position_monitor.trade_closed.connect(self.on_trade_closed)
+        # Get the appropriate brokers (use separate accounts if available)
+        day_broker = getattr(self, 'broker_50k', None) or self.broker
+        swing_broker = getattr(self, 'broker_100k', None) or self.broker
 
-        # Legacy auto trader (for compatibility)
-        self.auto_trader = AutoTrader(broker=self.broker)
+        # Position monitor for Day Trading (50K account)
+        self.day_position_monitor = PositionMonitor(broker=day_broker)
+        self.day_position_monitor.stop_loss_triggered.connect(self.on_stop_loss_triggered)
+        self.day_position_monitor.take_profit_triggered.connect(self.on_take_profit_triggered)
+        self.day_position_monitor.trailing_stop_triggered.connect(self.on_trailing_stop_triggered)
+        self.day_position_monitor.trade_closed.connect(self.on_trade_closed)
+
+        # Position monitor for Swing Trading (100K account)
+        self.swing_position_monitor = PositionMonitor(broker=swing_broker)
+        self.swing_position_monitor.stop_loss_triggered.connect(self.on_stop_loss_triggered)
+        self.swing_position_monitor.take_profit_triggered.connect(self.on_take_profit_triggered)
+        self.swing_position_monitor.trailing_stop_triggered.connect(self.on_trailing_stop_triggered)
+        self.swing_position_monitor.trade_closed.connect(self.on_trade_closed)
+
+        # Legacy position monitor (use 100K for backwards compat)
+        self.position_monitor = self.swing_position_monitor
+
+        # Legacy auto trader (for compatibility - uses 100K account)
+        self.auto_trader = AutoTrader(broker=swing_broker)
         self.auto_trader.set_ai_worker(self.ai_worker)
-        self.auto_trader.set_position_monitor(self.position_monitor)
+        self.auto_trader.set_position_monitor(self.swing_position_monitor)
         self.auto_trader.trade_executed.connect(self.on_auto_trade_executed)
         self.auto_trader.signal_generated.connect(self.on_signal_generated)
         self.auto_trader.status_update.connect(self.on_trader_status)
         self.auto_trader.stats_updated.connect(self.on_stats_updated)
         self.auto_trader.error.connect(self.on_trader_error)
 
-        # Day Trader (5-minute candles, tighter stops)
-        self.day_trader = AutoTrader(broker=self.broker)
+        # Day Trader (5-minute candles, tighter stops) - 50K ACCOUNT
+        self.day_trader = AutoTrader(broker=day_broker)
         self.day_trader.set_ai_worker(self.day_ai_worker)
-        self.day_trader.set_position_monitor(self.position_monitor)
+        self.day_trader.set_position_monitor(self.day_position_monitor)
         self.day_trader.set_mode('day')
-        self.day_trader.config['max_positions'] = 4  # Max 4 day trades at a time
+        self.day_trader.config['max_positions'] = 6  # Max 6 day trades
         self.day_trader.trade_executed.connect(self.on_auto_trade_executed)
         self.day_trader.signal_generated.connect(self.on_signal_generated)
-        self.day_trader.status_update.connect(lambda s: self.on_trader_status(f"[DAY] {s}"))
+        self.day_trader.status_update.connect(lambda s: self.on_trader_status(f"[DAY-50K] {s}"))
         self.day_trader.stats_updated.connect(self.on_stats_updated)
         self.day_trader.error.connect(self.on_trader_error)
 
-        # Swing Trader (daily candles, wider stops)
-        self.swing_trader = AutoTrader(broker=self.broker)
+        # Swing Trader (daily candles, wider stops) - 100K ACCOUNT
+        self.swing_trader = AutoTrader(broker=swing_broker)
         self.swing_trader.set_ai_worker(self.swing_ai_worker)
-        self.swing_trader.set_position_monitor(self.position_monitor)
+        self.swing_trader.set_position_monitor(self.swing_position_monitor)
         self.swing_trader.set_mode('swing')
-        self.swing_trader.config['max_positions'] = 4  # Max 4 swing trades at a time
+        self.swing_trader.config['max_positions'] = 6  # Max 6 swing trades
         self.swing_trader.trade_executed.connect(self.on_auto_trade_executed)
         self.swing_trader.signal_generated.connect(self.on_signal_generated)
-        self.swing_trader.status_update.connect(lambda s: self.on_trader_status(f"[SWING] {s}"))
+        self.swing_trader.status_update.connect(lambda s: self.on_trader_status(f"[SWING-100K] {s}"))
         self.swing_trader.stats_updated.connect(self.on_stats_updated)
         self.swing_trader.error.connect(self.on_trader_error)
 
-        print("[Trading] Dual mode traders initialized:")
-        print("[Trading]   Day Trader: 5-min candles, 2% SL, 4% TP")
-        print("[Trading]   Swing Trader: Daily candles, 5% SL, 12% TP")
+        print("[Trading] Dual account traders initialized:")
+        print(f"[Trading]   Day Trader (50K):  {day_broker is not None}")
+        print(f"[Trading]   Swing Trader (100K): {swing_broker is not None}")
 
     def setup_broker(self):
-        """Initialize Alpaca broker connection"""
-        if ALPACA_API_KEY and ALPACA_SECRET_KEY:
+        """Initialize Alpaca broker connections - separate accounts for day/swing trading"""
+        self.broker_50k = None  # Day trading account
+        self.broker_100k = None  # Swing trading account
+
+        # Setup 50K Day Trading Account
+        if ALPACA_50K_API_KEY and ALPACA_50K_SECRET_KEY:
             try:
-                self.broker = AlpacaBroker(
-                    api_key=ALPACA_API_KEY,
-                    secret_key=ALPACA_SECRET_KEY,
-                    paper=True  # Use paper trading
+                self.broker_50k = AlpacaBroker(
+                    api_key=ALPACA_50K_API_KEY,
+                    secret_key=ALPACA_50K_SECRET_KEY,
+                    paper=True
                 )
-                # Test connection
-                account = self.broker.get_account()
-                print(f"Connected to Alpaca - Account: ${account.equity:,.2f}")
-
-                # Setup WebSocket streaming
-                if WEBSOCKET_AVAILABLE:
-                    self.price_manager = PriceUpdateManager(
-                        api_key=ALPACA_API_KEY,
-                        secret_key=ALPACA_SECRET_KEY
-                    )
-                    self.price_manager.add_callback(self.on_price_update)
-                    self.price_manager.start()
-                    print("WebSocket streaming enabled")
-                else:
-                    print("WebSocket not available - install websocket-client")
-
+                account = self.broker_50k.get_account()
+                print(f"Connected to 50K Day Trading Account: ${float(account.equity):,.2f}")
             except Exception as e:
-                print(f"Failed to connect to Alpaca: {e}")
-                self.broker = None
+                print(f"Failed to connect to 50K account: {e}")
+
+        # Setup 100K Swing Trading Account
+        if ALPACA_100K_API_KEY and ALPACA_100K_SECRET_KEY:
+            try:
+                self.broker_100k = AlpacaBroker(
+                    api_key=ALPACA_100K_API_KEY,
+                    secret_key=ALPACA_100K_SECRET_KEY,
+                    paper=True
+                )
+                account = self.broker_100k.get_account()
+                print(f"Connected to 100K Swing Trading Account: ${float(account.equity):,.2f}")
+            except Exception as e:
+                print(f"Failed to connect to 100K account: {e}")
+
+        # Fallback to single account if dual not configured
+        if not self.broker_50k and not self.broker_100k:
+            if ALPACA_API_KEY and ALPACA_SECRET_KEY:
+                try:
+                    self.broker = AlpacaBroker(
+                        api_key=ALPACA_API_KEY,
+                        secret_key=ALPACA_SECRET_KEY,
+                        paper=True
+                    )
+                    account = self.broker.get_account()
+                    print(f"Connected to Alpaca - Account: ${float(account.equity):,.2f}")
+                    # Use same broker for both if only one configured
+                    self.broker_50k = self.broker
+                    self.broker_100k = self.broker
+                except Exception as e:
+                    print(f"Failed to connect to Alpaca: {e}")
+            else:
+                print("Alpaca API keys not set - using sample data")
         else:
-            print("Alpaca API keys not set - using sample data")
+            # Use 100K as the main display broker
+            self.broker = self.broker_100k or self.broker_50k
+
+        # Setup WebSocket streaming (use 100K account for price feed)
+        ws_key = ALPACA_100K_API_KEY or ALPACA_API_KEY
+        ws_secret = ALPACA_100K_SECRET_KEY or ALPACA_SECRET_KEY
+        if WEBSOCKET_AVAILABLE and ws_key and ws_secret:
+            try:
+                self.price_manager = PriceUpdateManager(
+                    api_key=ws_key,
+                    secret_key=ws_secret
+                )
+                self.price_manager.add_callback(self.on_price_update)
+                self.price_manager.start()
+                print("WebSocket streaming enabled")
+            except Exception as e:
+                print(f"WebSocket setup failed: {e}")
+        else:
+            print("WebSocket not available - install websocket-client")
 
     def setup_ui(self):
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
@@ -352,6 +410,11 @@ class MainWindow(QMainWindow):
         # Load recent trades and model performance (after status bar is created)
         self._load_trading_history()
 
+        # Start periodic portfolio refresh timer (every 10 seconds)
+        self.portfolio_refresh_timer = QTimer(self)
+        self.portfolio_refresh_timer.timeout.connect(self.refresh_positions)
+        self.portfolio_refresh_timer.start(10000)  # 10 seconds
+
     def create_tabs(self):
         """Create main application tabs"""
         # Dashboard tab (real implementation)
@@ -371,6 +434,8 @@ class MainWindow(QMainWindow):
         self.ai_trading_tab.auto_panel.pause_trading.connect(self.pause_auto_trading)
         self.ai_trading_tab.auto_panel.resume_trading.connect(self.resume_auto_trading)
         self.ai_trading_tab.auto_panel.close_all.connect(self.close_all_positions)
+        self.ai_trading_tab.auto_panel.shorting_changed.connect(self.set_shorting_enabled)
+        self.ai_trading_tab.auto_panel.rl_confirmation_changed.connect(self.set_rl_confirmation)
 
         # Load default watchlist
         self.ai_trading_tab.load_default_watchlist('day')
@@ -675,21 +740,53 @@ class MainWindow(QMainWindow):
         )
 
     def refresh_positions(self):
-        """Refresh positions from broker"""
-        if not self.broker:
-            return
-
+        """Refresh positions from broker - combines both accounts"""
         try:
-            positions = self.broker.get_positions()
-            account = self.broker.get_account()
+            # Initialize totals
+            total_equity = 0.0
+            total_day_pnl = 0.0
+            total_cash = 0.0
+            all_positions = []
 
-            # Update portfolio
+            # Get data from 50K Day Trading account
+            if self.broker_50k:
+                try:
+                    account_50k = self.broker_50k.get_account()
+                    positions_50k = self.broker_50k.get_positions()
+                    total_equity += account_50k.equity
+                    total_day_pnl += account_50k.equity - account_50k.last_equity
+                    total_cash += account_50k.cash
+                    all_positions.extend(positions_50k)
+                except Exception as e:
+                    print(f"[Refresh] Error getting 50K account: {e}")
+
+            # Get data from 100K Swing Trading account
+            if self.broker_100k:
+                try:
+                    account_100k = self.broker_100k.get_account()
+                    positions_100k = self.broker_100k.get_positions()
+                    total_equity += account_100k.equity
+                    total_day_pnl += account_100k.equity - account_100k.last_equity
+                    total_cash += account_100k.cash
+                    all_positions.extend(positions_100k)
+                except Exception as e:
+                    print(f"[Refresh] Error getting 100K account: {e}")
+
+            # Fallback to single broker if no dual accounts
+            if not self.broker_50k and not self.broker_100k and self.broker:
+                account = self.broker.get_account()
+                all_positions = self.broker.get_positions()
+                total_equity = account.equity
+                total_day_pnl = account.equity - account.last_equity
+                total_cash = account.cash
+
+            # Update portfolio with combined data
             portfolio_data = {
-                'total_value': account.equity,
-                'day_pnl': account.equity - account.portfolio_value,
-                'cash': account.cash,
-                'positions': len(positions),
-                'max_positions': 6,
+                'total_value': total_equity,
+                'day_pnl': total_day_pnl,
+                'cash': total_cash,
+                'positions': len(all_positions),
+                'max_positions': 12,  # 6 per account
                 'win_rate': 0,
                 'total_trades': 0
             }
@@ -697,7 +794,7 @@ class MainWindow(QMainWindow):
 
             # Update positions table
             positions_dict = {}
-            for pos in positions:
+            for pos in all_positions:
                 positions_dict[pos.symbol] = {
                     'entry_price': pos.avg_entry_price,
                     'current_price': pos.current_price,
@@ -713,39 +810,78 @@ class MainWindow(QMainWindow):
             if self.price_manager:
                 self.subscribe_symbols(list(positions_dict.keys()))
 
+            # Update status bar P&L
+            self.update_pnl(total_day_pnl)
+
         except Exception as e:
+            print(f"[Refresh] Error: {e}")
             self.dashboard_tab.log_activity(f"Refresh error: {e}", "ERROR")
 
     def load_real_data(self):
-        """Load real data from Alpaca"""
+        """Load real data from Alpaca - combines both accounts"""
         try:
-            # Get account info
-            account = self.broker.get_account()
+            # Initialize totals
+            total_equity = 0.0
+            total_day_pnl = 0.0
+            total_cash = 0.0
+            all_positions = []
 
-            # Get positions
-            positions = self.broker.get_positions()
+            # Get data from 50K Day Trading account
+            if self.broker_50k:
+                try:
+                    account_50k = self.broker_50k.get_account()
+                    positions_50k = self.broker_50k.get_positions()
+                    total_equity += account_50k.equity
+                    total_day_pnl += account_50k.equity - account_50k.last_equity
+                    total_cash += account_50k.cash
+                    all_positions.extend(positions_50k)
+                    self.dashboard_tab.log_activity(f"50K Account: ${account_50k.equity:,.2f} (Day P&L: ${account_50k.equity - account_50k.last_equity:+,.2f})", "INFO")
+                except Exception as e:
+                    print(f"[Load] Error getting 50K account: {e}")
 
-            # Update portfolio widget
+            # Get data from 100K Swing Trading account
+            if self.broker_100k:
+                try:
+                    account_100k = self.broker_100k.get_account()
+                    positions_100k = self.broker_100k.get_positions()
+                    total_equity += account_100k.equity
+                    total_day_pnl += account_100k.equity - account_100k.last_equity
+                    total_cash += account_100k.cash
+                    all_positions.extend(positions_100k)
+                    self.dashboard_tab.log_activity(f"100K Account: ${account_100k.equity:,.2f} (Day P&L: ${account_100k.equity - account_100k.last_equity:+,.2f})", "INFO")
+                except Exception as e:
+                    print(f"[Load] Error getting 100K account: {e}")
+
+            # Fallback to single broker if no dual accounts
+            if not self.broker_50k and not self.broker_100k and self.broker:
+                account = self.broker.get_account()
+                all_positions = self.broker.get_positions()
+                total_equity = account.equity
+                total_day_pnl = account.equity - account.last_equity
+                total_cash = account.cash
+                self.dashboard_tab.log_activity(f"Single Account: ${account.equity:,.2f}", "INFO")
+
+            # Update portfolio widget with combined data
             portfolio_data = {
-                'total_value': account.equity,
-                'day_pnl': account.equity - account.portfolio_value,  # Approximate
-                'cash': account.cash,
-                'positions': len(positions),
-                'max_positions': 6,
-                'win_rate': 0,  # Would need trade history
+                'total_value': total_equity,
+                'day_pnl': total_day_pnl,
+                'cash': total_cash,
+                'positions': len(all_positions),
+                'max_positions': 12,  # 6 per account
+                'win_rate': 0,
                 'total_trades': 0
             }
             self.dashboard_tab.update_portfolio(portfolio_data)
 
             # Update positions table
             positions_dict = {}
-            for pos in positions:
+            for pos in all_positions:
                 positions_dict[pos.symbol] = {
                     'entry_price': pos.avg_entry_price,
                     'current_price': pos.current_price,
                     'shares': int(pos.qty),
-                    'stop_loss': pos.avg_entry_price * 0.98,  # 2% default
-                    'profit_target': pos.avg_entry_price * 1.06,  # 6% default
+                    'stop_loss': pos.avg_entry_price * 0.98,
+                    'profit_target': pos.avg_entry_price * 1.06,
                     'risk_score': 70,
                     'ai_model_name': 'Manual'
                 }
@@ -754,9 +890,9 @@ class MainWindow(QMainWindow):
             # Update market bar connection status
             self.market_bar.set_connected(True)
 
-            # Log
-            self.dashboard_tab.log_activity(f"Connected to Alpaca (${account.equity:,.2f})", "INFO")
-            self.dashboard_tab.log_activity(f"Loaded {len(positions)} positions", "INFO")
+            # Log totals
+            self.dashboard_tab.log_activity(f"Combined Portfolio: ${total_equity:,.2f}", "INFO")
+            self.dashboard_tab.log_activity(f"Loaded {len(all_positions)} positions from both accounts", "INFO")
 
             # Load chart data
             self.load_chart_data(self.current_chart_symbol, self.current_timeframe)
@@ -772,13 +908,15 @@ class MainWindow(QMainWindow):
                 # Subscribe to chart symbol and SPY
                 self.subscribe_symbols([self.current_chart_symbol, "SPY"])
 
-            # Check market status
-            if self.broker.is_market_open():
+            # Check market status (use any available broker)
+            active_broker = self.broker_100k or self.broker_50k or self.broker
+            if active_broker and active_broker.is_market_open():
                 self.dashboard_tab.log_activity("Market is OPEN", "INFO")
             else:
                 self.dashboard_tab.log_activity("Market is CLOSED", "INFO")
 
         except Exception as e:
+            print(f"[Load] Error loading data: {e}")
             self.dashboard_tab.log_activity(f"Error loading data: {e}", "ERROR")
             self.load_demo_data()
 
@@ -1221,50 +1359,59 @@ class MainWindow(QMainWindow):
         self.dashboard_tab.log_activity(f"Trader Error: {error}", "ERROR")
 
     def start_dual_trading(self):
-        """Start BOTH day trading and swing trading simultaneously."""
-        # Set broker on AI workers if not already set
-        if self.broker:
-            if self.day_ai_worker and not self.day_ai_worker.broker:
-                self.day_ai_worker.set_broker(self.broker)
-            if self.swing_ai_worker and not self.swing_ai_worker.broker:
-                self.swing_ai_worker.set_broker(self.broker)
+        """Start BOTH day trading and swing trading simultaneously with separate accounts."""
+        # Get the appropriate brokers
+        day_broker = getattr(self, 'broker_50k', None) or self.broker
+        swing_broker = getattr(self, 'broker_100k', None) or self.broker
 
-        # Start position monitor first (shared by both traders)
-        if not self.position_monitor.isRunning():
-            self.position_monitor.start()
-            # Sync with existing broker positions so they get monitored
-            self.position_monitor.sync_with_broker(default_stop_pct=0.02, default_profit_pct=0.05)
+        # Set broker on AI workers with correct accounts
+        if self.day_ai_worker and day_broker:
+            self.day_ai_worker.set_broker(day_broker)
+        if self.swing_ai_worker and swing_broker:
+            self.swing_ai_worker.set_broker(swing_broker)
 
-        # Configure and start Day Trader (5-minute candles)
+        # Start Day Trading position monitor (50K account)
+        if hasattr(self, 'day_position_monitor') and not self.day_position_monitor.isRunning():
+            self.day_position_monitor.start()
+            self.day_position_monitor.sync_with_broker(default_stop_pct=0.02, default_profit_pct=0.04)
+            print("[DAY MONITOR] Started for 50K account")
+
+        # Start Swing Trading position monitor (100K account)
+        if hasattr(self, 'swing_position_monitor') and not self.swing_position_monitor.isRunning():
+            self.swing_position_monitor.start()
+            self.swing_position_monitor.sync_with_broker(default_stop_pct=0.05, default_profit_pct=0.12)
+            print("[SWING MONITOR] Started for 100K account")
+
+        # Configure and start Day Trader (5-minute candles) - 50K ACCOUNT
         if self.day_trader:
-            day_watchlist = DEFAULT_DAY_WATCHLIST[:10]  # 10 high-volume stocks for day trading
+            day_watchlist = DEFAULT_DAY_WATCHLIST[:10]
             self.day_trader.config.update({
-                'max_positions': 2,
+                'max_positions': 6,  # 6 positions for day trading
                 'min_confidence': 0.70,
                 'auto_execute': True,
-                'stop_loss_pct': 0.02,      # 2% stop loss for day trading
-                'take_profit_pct': 0.04     # 4% take profit for day trading
+                'stop_loss_pct': 0.02,      # 2% stop loss
+                'take_profit_pct': 0.04     # 4% take profit
             })
             self.day_trader.set_watchlist(day_watchlist)
             self.day_trader.start()
-            print(f"[DAY TRADER] Started with {len(day_watchlist)} symbols (5-min candles)")
+            print(f"[DAY TRADER-50K] Started with {len(day_watchlist)} symbols")
 
-        # Configure and start Swing Trader (daily candles)
+        # Configure and start Swing Trader (daily candles) - 100K ACCOUNT
         if self.swing_trader:
-            swing_watchlist = DEFAULT_SWING_WATCHLIST[:10]  # 10 stocks for swing trading
+            swing_watchlist = DEFAULT_SWING_WATCHLIST[:10]
             self.swing_trader.config.update({
-                'max_positions': 2,
+                'max_positions': 6,  # 6 positions for swing trading
                 'min_confidence': 0.70,
                 'auto_execute': True,
-                'stop_loss_pct': 0.05,      # 5% stop loss for swing trading
-                'take_profit_pct': 0.12     # 12% take profit for swing trading
+                'stop_loss_pct': 0.05,      # 5% stop loss
+                'take_profit_pct': 0.12     # 12% take profit
             })
             self.swing_trader.set_watchlist(swing_watchlist)
             self.swing_trader.start()
-            print(f"[SWING TRADER] Started with {len(swing_watchlist)} symbols (daily candles)")
+            print(f"[SWING TRADER-100K] Started with {len(swing_watchlist)} symbols")
 
         self.dashboard_tab.log_activity(
-            "DUAL MODE started: Day (5-min, 2% SL) + Swing (daily, 5% SL)",
+            "DUAL ACCOUNT MODE: Day (50K, 2% SL) + Swing (100K, 5% SL)",
             "TRADE"
         )
 
@@ -1277,7 +1424,7 @@ class MainWindow(QMainWindow):
 
         # Configure based on mode
         config = {
-            'max_positions': 2,
+            'max_positions': 10,  # Allow more positions since broker may have existing ones
             'min_confidence': 0.70,
             'auto_execute': True
         }
@@ -1341,6 +1488,28 @@ class MainWindow(QMainWindow):
         if self.auto_trader:
             self.auto_trader.close_all_positions()
         self.dashboard_tab.log_activity("Closing all positions...", "TRADE")
+
+    def set_shorting_enabled(self, allow: bool):
+        """Enable or disable short selling for all traders."""
+        if self.day_trader:
+            self.day_trader.set_allow_shorting(allow)
+        if self.swing_trader:
+            self.swing_trader.set_allow_shorting(allow)
+        if self.auto_trader:
+            self.auto_trader.set_allow_shorting(allow)
+        status = "enabled" if allow else "disabled"
+        self.dashboard_tab.log_activity(f"Shorting {status}", "CONFIG")
+
+    def set_rl_confirmation(self, use_rl: bool):
+        """Enable or disable RL confirmation for trade signals."""
+        if self.day_trader:
+            self.day_trader.set_rl_confirmation(use_rl)
+        if self.swing_trader:
+            self.swing_trader.set_rl_confirmation(use_rl)
+        if self.auto_trader:
+            self.auto_trader.set_rl_confirmation(use_rl)
+        status = "enabled" if use_rl else "disabled"
+        self.dashboard_tab.log_activity(f"RL Confirmation {status}", "CONFIG")
 
     def _get_combined_trader_stats(self) -> dict:
         """Get combined stats from both day and swing traders."""

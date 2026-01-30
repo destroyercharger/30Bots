@@ -128,6 +128,7 @@ class Account:
     cash: float
     buying_power: float
     portfolio_value: float
+    last_equity: float  # Previous day's equity for P&L calculation
     currency: str
     pattern_day_trader: bool
     trading_blocked: bool
@@ -144,6 +145,7 @@ class Account:
             cash=float(data['cash']),
             buying_power=float(data['buying_power']),
             portfolio_value=float(data['portfolio_value']),
+            last_equity=float(data.get('last_equity', data['equity'])),  # Fallback to equity if not present
             currency=data['currency'],
             pattern_day_trader=data['pattern_day_trader'],
             trading_blocked=data['trading_blocked'],
