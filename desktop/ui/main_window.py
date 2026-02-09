@@ -5,10 +5,11 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QStatusBar, QFrame, QSplitter,
-    QMenuBar, QMenu, QToolBar
+    QMenuBar, QMenu, QToolBar, QDialog, QTextEdit,
+    QComboBox, QPushButton, QFileDialog
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QFont
+from PyQt6.QtGui import QAction, QFont, QTextCursor
 
 from datetime import datetime
 try:
@@ -26,12 +27,18 @@ from config import (
     ALPACA_50K_API_KEY, ALPACA_50K_SECRET_KEY,
     ALPACA_100K_API_KEY, ALPACA_100K_SECRET_KEY
 )
+
+# Crypto account credentials
+ALPACA_CRYPTO_API_KEY = os.getenv('ALPACA_CRYPTO_API_KEY') or 'PKJPMLUVBOGFKONCVKXFL6XXXT'
+ALPACA_CRYPTO_SECRET_KEY = os.getenv('ALPACA_CRYPTO_SECRET_KEY') or 'Dp9NiuGTCyHGBeWXN9VW2vkBrb6XAwJPRvwPe77cC5JS'
 from ui.styles import DARK_THEME, COLORS
 from ui.tabs.dashboard_tab import DashboardTab
+from ui.tabs.multi_account_dashboard import MultiAccountDashboard
 from ui.tabs.ai_trading_tab import AITradingTab
 from ui.tabs.news_trading_tab import NewsTradingTab
 from ui.tabs.crypto_tab import CryptoTab
 from ui.tabs.analytics_tab import AnalyticsTab
+from ui.tabs.patterns_tab import PatternsTab
 from ui.tabs.settings_tab import SettingsTab
 from ui.widgets.ai_terminal import AITerminalDock
 from data.broker_adapter import AlpacaBroker, timeframe_to_alpaca, get_lookback_days
@@ -40,6 +47,7 @@ from ai.prediction_worker import AIPredictionWorker, get_ai_brain, AI_AVAILABLE,
 from core.trade_logger import get_trade_logger
 from core.position_monitor import PositionMonitor
 from core.auto_trader import AutoTrader, DEFAULT_DAY_WATCHLIST, DEFAULT_SWING_WATCHLIST
+from ui.notification_manager import get_notification_manager
 
 
 class MarketStatusBar(QFrame):
@@ -163,6 +171,158 @@ class MarketStatusBar(QFrame):
             self.connection_label.setStyleSheet(f"color: {COLORS['text_muted']};")
 
 
+class LogViewerDialog(QDialog):
+    """Dialog for viewing trading logs"""
+
+    LOG_FILES = {
+        'Trading Alerts': '/mnt/d/Projects/30Bots/desktop/data/alerts.log',
+        'Performance Scaling': '/mnt/d/Projects/30Bots/desktop/data/performance_scaling.log',
+        '50K Day Trading': '/var/log/trading/50k.log',
+        '100K Swing Trading': '/var/log/trading/100k.log',
+        '30Bots App': '/tmp/30bots.log',
+        'Trading Alerts Service': '/tmp/trading_alerts.log',
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Log Viewer")
+        self.setMinimumSize(900, 600)
+        self.setup_ui()
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.timeout.connect(self.refresh_log)
+        self.refresh_timer.start(5000)  # Refresh every 5 seconds
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        # Top bar with log selector and controls
+        top_bar = QHBoxLayout()
+
+        # Log selector
+        self.log_selector = QComboBox()
+        self.log_selector.addItems(list(self.LOG_FILES.keys()))
+        self.log_selector.currentTextChanged.connect(self.on_log_changed)
+        self.log_selector.setMinimumWidth(200)
+        top_bar.addWidget(QLabel("Log File:"))
+        top_bar.addWidget(self.log_selector)
+
+        top_bar.addStretch()
+
+        # Refresh button
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.clicked.connect(self.refresh_log)
+        top_bar.addWidget(refresh_btn)
+
+        # Clear button
+        clear_btn = QPushButton("Clear View")
+        clear_btn.clicked.connect(lambda: self.log_display.clear())
+        top_bar.addWidget(clear_btn)
+
+        # Auto-scroll checkbox
+        self.auto_scroll = True
+
+        layout.addLayout(top_bar)
+
+        # Log display
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+        self.log_display.setFont(QFont("Consolas", 10))
+        self.log_display.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {COLORS['bg_dark']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+            }}
+        """)
+        layout.addWidget(self.log_display)
+
+        # Status bar
+        self.status_label = QLabel("Select a log file to view")
+        self.status_label.setStyleSheet(f"color: {COLORS['text_muted']};")
+        layout.addWidget(self.status_label)
+
+        # Load first log
+        self.on_log_changed(self.log_selector.currentText())
+
+    def on_log_changed(self, log_name: str):
+        """Handle log file selection change"""
+        self.refresh_log()
+
+    def refresh_log(self):
+        """Refresh the current log file"""
+        log_name = self.log_selector.currentText()
+        log_path = self.LOG_FILES.get(log_name, '')
+
+        if not log_path:
+            return
+
+        try:
+            from pathlib import Path
+            path = Path(log_path)
+
+            if not path.exists():
+                self.log_display.setPlainText(f"Log file not found: {log_path}")
+                self.status_label.setText(f"File not found: {log_path}")
+                return
+
+            # Read last 500 lines
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                content = ''.join(lines[-500:])
+
+            # Preserve scroll position if not auto-scrolling
+            scrollbar = self.log_display.verticalScrollBar()
+            was_at_bottom = scrollbar.value() >= scrollbar.maximum() - 10
+
+            self.log_display.setPlainText(content)
+
+            # Apply syntax highlighting for log levels
+            self.highlight_log_levels()
+
+            # Auto-scroll to bottom if was at bottom
+            if was_at_bottom or self.auto_scroll:
+                scrollbar.setValue(scrollbar.maximum())
+
+            # Update status
+            size_kb = path.stat().st_size / 1024
+            self.status_label.setText(
+                f"{log_path} | {len(lines)} lines | {size_kb:.1f} KB"
+            )
+
+        except Exception as e:
+            self.log_display.setPlainText(f"Error reading log: {e}")
+            self.status_label.setText(f"Error: {e}")
+
+    def highlight_log_levels(self):
+        """Apply basic highlighting to log levels"""
+        # This is a simple approach - could be enhanced with QSyntaxHighlighter
+        content = self.log_display.toPlainText()
+
+        # Color codes for different levels
+        colors = {
+            'ERROR': '#ff6b6b',
+            'CRITICAL': '#ff4757',
+            'WARNING': '#ffa502',
+            'INFO': '#2ed573',
+            'DEBUG': '#747d8c',
+        }
+
+        # For now, just update the status with counts
+        counts = {level: content.count(level) for level in colors}
+        active_counts = [f"{level}: {count}" for level, count in counts.items() if count > 0]
+        if active_counts:
+            current_status = self.status_label.text()
+            self.status_label.setText(f"{current_status} | {', '.join(active_counts)}")
+
+    def closeEvent(self, event):
+        """Stop timer on close"""
+        self.refresh_timer.stop()
+        super().closeEvent(event)
+
+
 class MainWindow(QMainWindow):
     """Main application window"""
 
@@ -182,6 +342,7 @@ class MainWindow(QMainWindow):
         self.swing_ai_worker = None
         self.trade_logger = get_trade_logger()
         self.subscribed_symbols = set()
+        self.notification_manager = get_notification_manager(self)
         self.setup_broker()
         self.setup_ai()
         self.setup_trading_engine()
@@ -309,9 +470,10 @@ class MainWindow(QMainWindow):
         print(f"[Trading]   Swing Trader (100K): {swing_broker is not None}")
 
     def setup_broker(self):
-        """Initialize Alpaca broker connections - separate accounts for day/swing trading"""
+        """Initialize Alpaca broker connections - separate accounts for day/swing/crypto trading"""
         self.broker_50k = None  # Day trading account
         self.broker_100k = None  # Swing trading account
+        self.broker_crypto = None  # Crypto trading account
 
         # Setup 50K Day Trading Account
         if ALPACA_50K_API_KEY and ALPACA_50K_SECRET_KEY:
@@ -338,6 +500,19 @@ class MainWindow(QMainWindow):
                 print(f"Connected to 100K Swing Trading Account: ${float(account.equity):,.2f}")
             except Exception as e:
                 print(f"Failed to connect to 100K account: {e}")
+
+        # Setup Crypto Trading Account
+        if ALPACA_CRYPTO_API_KEY and ALPACA_CRYPTO_SECRET_KEY:
+            try:
+                self.broker_crypto = AlpacaBroker(
+                    api_key=ALPACA_CRYPTO_API_KEY,
+                    secret_key=ALPACA_CRYPTO_SECRET_KEY,
+                    paper=True
+                )
+                account = self.broker_crypto.get_account()
+                print(f"Connected to Crypto Trading Account: ${float(account.equity):,.2f}")
+            except Exception as e:
+                print(f"Failed to connect to Crypto account: {e}")
 
         # Fallback to single account if dual not configured
         if not self.broker_50k and not self.broker_100k:
@@ -421,6 +596,11 @@ class MainWindow(QMainWindow):
         self.dashboard_tab = DashboardTab()
         self.tabs.addTab(self.dashboard_tab, "Dashboard")
 
+        # Multi-Account Dashboard (Overview + Day/Swing/Crypto tabs)
+        self.multi_dashboard = MultiAccountDashboard()
+        self.multi_dashboard.refresh_requested.connect(self.refresh_multi_dashboard)
+        self.tabs.addTab(self.multi_dashboard, "Accounts")
+
         # Add some sample data for testing
         self.load_sample_data()
 
@@ -455,6 +635,10 @@ class MainWindow(QMainWindow):
         # Analytics tab
         self.analytics_tab = AnalyticsTab(trade_logger=self.trade_logger)
         self.tabs.addTab(self.analytics_tab, "Analytics")
+
+        # Patterns tab
+        self.patterns_tab = PatternsTab()
+        self.tabs.addTab(self.patterns_tab, "Patterns")
 
         # Settings tab
         self.settings_tab = SettingsTab()
@@ -534,6 +718,8 @@ class MainWindow(QMainWindow):
                     "Market closed - auto trading will not start automatically",
                     "INFO"
                 )
+                # STILL start position monitors to protect existing positions!
+                self._start_position_monitors_only()
         except Exception as e:
             print(f"[AUTO-START] Error: {e}")
             self.dashboard_tab.log_activity(f"Auto-start error: {e}", "ERROR")
@@ -590,6 +776,14 @@ class MainWindow(QMainWindow):
         self.ai_assistant_action.setChecked(False)
         self.ai_assistant_action.triggered.connect(self.toggle_ai_terminal)
         view_menu.addAction(self.ai_assistant_action)
+
+        view_menu.addSeparator()
+
+        # View Logs action
+        view_logs_action = QAction("View Logs", self)
+        view_logs_action.setShortcut("Ctrl+L")
+        view_logs_action.triggered.connect(self.show_log_viewer)
+        view_menu.addAction(view_logs_action)
 
         # Trading menu
         trading_menu = menubar.addMenu("Trading")
@@ -697,6 +891,9 @@ class MainWindow(QMainWindow):
         else:
             self.load_demo_data()
 
+        # Also refresh the multi-account dashboard
+        QTimer.singleShot(1000, self.refresh_multi_dashboard)
+
         # Connect chart signals
         self.dashboard_tab.stock_chart.timeframe_changed.connect(self.on_timeframe_changed)
         self.dashboard_tab.positions_table.view_chart_requested.connect(self.on_view_chart_requested)
@@ -738,6 +935,134 @@ class MainWindow(QMainWindow):
             f"Order submitted: {order_details['side'].upper()} {order_details['qty']} {order_details['symbol']}",
             "TRADE"
         )
+
+    def refresh_multi_dashboard(self):
+        """Refresh the multi-account dashboard with data from all accounts."""
+        try:
+            day_data = {'equity': 0, 'pnl': 0, 'pnl_pct': 0, 'cash': 0, 'positions': 0, 'max_positions': 5, 'win_rate': 0}
+            swing_data = {'equity': 0, 'pnl': 0, 'pnl_pct': 0, 'cash': 0, 'positions': 0, 'max_positions': 5, 'win_rate': 0}
+            crypto_data = {'equity': 0, 'pnl': 0, 'pnl_pct': 0, 'cash': 0, 'positions': 0, 'max_positions': 5, 'win_rate': 0}
+            day_positions = []
+            swing_positions = []
+            crypto_positions = []
+
+            # 50K Day Trading Account
+            if self.broker_50k:
+                try:
+                    account = self.broker_50k.get_account()
+                    positions = self.broker_50k.get_positions()
+                    equity = float(account.equity)
+                    pnl = equity - 50000  # Starting equity
+                    day_data = {
+                        'equity': equity,
+                        'pnl': float(account.equity) - float(account.last_equity),
+                        'pnl_pct': ((equity - 50000) / 50000) * 100,
+                        'cash': float(account.cash),
+                        'positions': len(positions),
+                        'max_positions': 5,
+                        'win_rate': 0
+                    }
+                    for pos in positions:
+                        day_positions.append({
+                            'symbol': pos.symbol,
+                            'qty': float(pos.qty),
+                            'entry_price': float(pos.avg_entry_price),
+                            'current_price': float(pos.current_price),
+                            'pnl': float(pos.unrealized_pl),
+                            'pnl_pct': float(pos.unrealized_plpc) * 100,
+                            'market_value': float(pos.market_value)
+                        })
+                except Exception as e:
+                    print(f"[MultiDashboard] Error fetching 50K data: {e}")
+
+            # 100K Swing Trading Account
+            if self.broker_100k:
+                try:
+                    account = self.broker_100k.get_account()
+                    positions = self.broker_100k.get_positions()
+                    equity = float(account.equity)
+                    swing_data = {
+                        'equity': equity,
+                        'pnl': float(account.equity) - float(account.last_equity),
+                        'pnl_pct': ((equity - 100000) / 100000) * 100,
+                        'cash': float(account.cash),
+                        'positions': len(positions),
+                        'max_positions': 5,
+                        'win_rate': 0
+                    }
+                    for pos in positions:
+                        swing_positions.append({
+                            'symbol': pos.symbol,
+                            'qty': float(pos.qty),
+                            'entry_price': float(pos.avg_entry_price),
+                            'current_price': float(pos.current_price),
+                            'pnl': float(pos.unrealized_pl),
+                            'pnl_pct': float(pos.unrealized_plpc) * 100,
+                            'market_value': float(pos.market_value)
+                        })
+                except Exception as e:
+                    print(f"[MultiDashboard] Error fetching 100K data: {e}")
+
+            # Crypto Trading Account
+            if self.broker_crypto:
+                try:
+                    account = self.broker_crypto.get_account()
+                    positions = self.broker_crypto.get_positions()
+                    equity = float(account.equity)
+                    crypto_data = {
+                        'equity': equity,
+                        'pnl': float(account.equity) - float(account.last_equity),
+                        'pnl_pct': ((equity - 100000) / 100000) * 100,
+                        'cash': float(account.cash),
+                        'positions': len(positions),
+                        'max_positions': 5,
+                        'win_rate': 0
+                    }
+                    for pos in positions:
+                        crypto_positions.append({
+                            'symbol': pos.symbol,
+                            'qty': float(pos.qty),
+                            'entry_price': float(pos.avg_entry_price),
+                            'current_price': float(pos.current_price),
+                            'pnl': float(pos.unrealized_pl),
+                            'pnl_pct': float(pos.unrealized_plpc) * 100,
+                            'market_value': float(pos.market_value)
+                        })
+                except Exception as e:
+                    print(f"[MultiDashboard] Error fetching Crypto data: {e}")
+
+            # Get program stats from trade history database
+            program_stats = {'win_rate': 0, 'total_trades': 0}
+            try:
+                import sqlite3
+                import os
+                db_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'trade_learning.db')
+                if os.path.exists(db_path):
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT COUNT(*) FROM trade_analysis WHERE pnl > 0')
+                    wins = cursor.fetchone()[0]
+                    cursor.execute('SELECT COUNT(*) FROM trade_analysis WHERE pnl <= 0')
+                    losses = cursor.fetchone()[0]
+                    total = wins + losses
+                    win_rate = (wins / total * 100) if total > 0 else 0
+                    program_stats = {
+                        'win_rate': win_rate,
+                        'total_trades': total
+                    }
+                    conn.close()
+            except Exception as e:
+                print(f"[MultiDashboard] Error getting stats: {e}")
+
+            # Update the multi-dashboard
+            self.multi_dashboard.update_all(
+                day_data, swing_data, crypto_data,
+                day_positions, swing_positions, crypto_positions,
+                program_stats
+            )
+
+        except Exception as e:
+            print(f"[MultiDashboard] Error refreshing: {e}")
 
     def refresh_positions(self):
         """Refresh positions from broker - combines both accounts"""
@@ -1181,18 +1506,21 @@ class MainWindow(QMainWindow):
         """Handle stop loss trigger."""
         self.dashboard_tab.log_decision(f"STOP LOSS: {symbol} @ ${price:.2f}")
         self.dashboard_tab.log_activity(f"Stop loss hit for {symbol}", "TRADE")
+        # Notification sent in on_trade_closed with actual P&L
         QTimer.singleShot(1000, self.refresh_positions)
 
     def on_take_profit_triggered(self, symbol: str, price: float, reason: str):
         """Handle take profit trigger."""
         self.dashboard_tab.log_decision(f"TAKE PROFIT: {symbol} @ ${price:.2f}")
         self.dashboard_tab.log_activity(f"Take profit hit for {symbol}", "TRADE")
+        # Notification sent in on_trade_closed with actual P&L
         QTimer.singleShot(1000, self.refresh_positions)
 
     def on_trailing_stop_triggered(self, symbol: str, price: float, reason: str):
         """Handle trailing stop trigger."""
         self.dashboard_tab.log_decision(f"TRAILING STOP: {symbol} @ ${price:.2f}")
         self.dashboard_tab.log_activity(f"Trailing stop hit for {symbol}", "TRADE")
+        # Notification sent in on_trade_closed with actual P&L
         QTimer.singleShot(1000, self.refresh_positions)
 
     def on_trade_closed(self, result: dict):
@@ -1201,6 +1529,7 @@ class MainWindow(QMainWindow):
         pnl = result.get('pnl', 0)
         pnl_pct = result.get('pnl_pct', 0)
         reason = result.get('exit_reason', 'unknown')
+        price = result.get('exit_price', 0)
         status = "WIN" if pnl > 0 else "LOSS"
 
         level = "TRADE" if pnl > 0 else "ERROR"
@@ -1208,6 +1537,14 @@ class MainWindow(QMainWindow):
             f"{status}: {symbol} ${pnl:+.2f} ({pnl_pct:+.1f}%) - {reason}",
             level
         )
+
+        # Send notification based on exit reason
+        if reason == 'stop_loss':
+            self.notification_manager.notify_stop_loss(symbol, price, pnl)
+        elif reason == 'take_profit':
+            self.notification_manager.notify_take_profit(symbol, price, pnl)
+        elif reason == 'trailing_stop':
+            self.notification_manager.notify_trailing_stop(symbol, price, pnl)
 
         # Update stats display
         today_stats = self.trade_logger.get_today_stats()
@@ -1240,6 +1577,15 @@ class MainWindow(QMainWindow):
         self.dashboard_tab.log_activity(
             f"Auto trade: {action} {shares} {symbol} @ ${price:.2f}",
             "TRADE"
+        )
+
+        # Send notification
+        self.notification_manager.notify_trade_executed(
+            symbol=symbol,
+            action=action,
+            shares=shares,
+            price=price,
+            model=model
         )
 
         # Subscribe to price updates for new position
@@ -1358,6 +1704,28 @@ class MainWindow(QMainWindow):
         """Handle trader error."""
         self.dashboard_tab.log_activity(f"Trader Error: {error}", "ERROR")
 
+    def _start_position_monitors_only(self):
+        """Start position monitors without starting traders (for off-hours protection)."""
+        # Get the appropriate brokers
+        day_broker = getattr(self, 'broker_50k', None) or self.broker
+        swing_broker = getattr(self, 'broker_100k', None) or self.broker
+
+        # Start Day Trading position monitor (50K account)
+        if hasattr(self, 'day_position_monitor') and day_broker:
+            self.day_position_monitor.set_broker(day_broker)
+            if not self.day_position_monitor.isRunning():
+                self.day_position_monitor.start()
+                self.day_position_monitor.sync_with_broker(default_stop_pct=0.02, default_profit_pct=0.04)
+                print("[DAY MONITOR] Started for 50K account (off-hours protection)")
+
+        # Start Swing Trading position monitor (100K account)
+        if hasattr(self, 'swing_position_monitor') and swing_broker:
+            self.swing_position_monitor.set_broker(swing_broker)
+            if not self.swing_position_monitor.isRunning():
+                self.swing_position_monitor.start()
+                self.swing_position_monitor.sync_with_broker(default_stop_pct=0.05, default_profit_pct=0.12)
+                print("[SWING MONITOR] Started for 100K account (off-hours protection)")
+
     def start_dual_trading(self):
         """Start BOTH day trading and swing trading simultaneously with separate accounts."""
         # Get the appropriate brokers
@@ -1396,19 +1764,25 @@ class MainWindow(QMainWindow):
             self.day_trader.start()
             print(f"[DAY TRADER-50K] Started with {len(day_watchlist)} symbols")
 
-        # Configure and start Swing Trader (daily candles) - 100K ACCOUNT
+        # Configure Swing Trader (daily candles) - 100K ACCOUNT
+        # NOTE: Swing trading is now DISABLED in the desktop app
+        # The optimized_scanner.py handles swing trading separately with proper
+        # intervals (not every 30 seconds like the desktop app was doing)
+        # The position monitor still runs to enforce stops on existing positions
         if self.swing_trader:
             swing_watchlist = DEFAULT_SWING_WATCHLIST[:10]
             self.swing_trader.config.update({
-                'max_positions': 6,  # 6 positions for swing trading
-                'min_confidence': 0.70,
-                'auto_execute': True,
-                'stop_loss_pct': 0.05,      # 5% stop loss
-                'take_profit_pct': 0.12     # 12% take profit
+                'max_positions': 6,
+                'min_confidence': 0.75,
+                'auto_execute': False,  # DISABLED - let optimized_scanner handle trades
+                'stop_loss_pct': 0.05,      # 5% stop loss (wider for swing)
+                'take_profit_pct': 0.15,    # 15% take profit
+                'scan_interval': 3600000,   # 1 hour scan interval (not 30 seconds!)
             })
             self.swing_trader.set_watchlist(swing_watchlist)
-            self.swing_trader.start()
-            print(f"[SWING TRADER-100K] Started with {len(swing_watchlist)} symbols")
+            # DON'T start swing_trader - position monitor handles existing positions
+            # self.swing_trader.start()
+            print(f"[SWING TRADER-100K] DISABLED - managed by optimized_scanner.py")
 
         self.dashboard_tab.log_activity(
             "DUAL ACCOUNT MODE: Day (50K, 2% SL) + Swing (100K, 5% SL)",
@@ -1511,6 +1885,35 @@ class MainWindow(QMainWindow):
         status = "enabled" if use_rl else "disabled"
         self.dashboard_tab.log_activity(f"RL Confirmation {status}", "CONFIG")
 
+    def enable_paper_trading(self, starting_cash: float = 100000):
+        """
+        Enable paper trading mode for all traders.
+        This simulates trading without using real money.
+        """
+        print(f"[MainWindow] Enabling paper trading with ${starting_cash:,.0f}")
+
+        # Enable for auto_trader
+        if self.auto_trader:
+            self.auto_trader.set_paper_trading(True, starting_cash)
+
+        # Update UI to show paper trading mode
+        if hasattr(self, 'market_status_bar'):
+            self.market_status_bar.mode_label.setText("MODE: PAPER TRADING")
+            self.market_status_bar.mode_label.setStyleSheet(
+                f"color: #FFA500; font-weight: bold;"  # Orange for paper trading
+            )
+
+        # Log the change
+        self.dashboard_tab.log_activity(
+            f"Paper Trading Enabled (${starting_cash:,.0f})", "SYSTEM"
+        )
+
+    def get_paper_trading_stats(self) -> dict:
+        """Get paper trading performance statistics."""
+        if self.auto_trader:
+            return self.auto_trader.get_paper_stats()
+        return {'enabled': False}
+
     def _get_combined_trader_stats(self) -> dict:
         """Get combined stats from both day and swing traders."""
         combined = {
@@ -1568,6 +1971,11 @@ class MainWindow(QMainWindow):
             self.ai_terminal_dock.hide()
 
         self.ai_assistant_action.setChecked(checked)
+
+    def show_log_viewer(self):
+        """Show the log viewer dialog."""
+        dialog = LogViewerDialog(self)
+        dialog.exec()
 
     def update_ai_terminal_context(self):
         """Update the AI terminal with current trading context."""
@@ -1647,6 +2055,11 @@ class MainWindow(QMainWindow):
             self.swing_trader.pause()
         elif trading.get('swing_trading_enabled', True) and self.swing_trader:
             self.swing_trader.resume()
+
+        # Apply notification settings
+        notifications = settings.get('notifications', {})
+        if notifications:
+            self.notification_manager.update_settings(notifications)
 
         print("[Settings] Trading configuration updated")
         self.dashboard_tab.log_activity("Settings updated and applied", "INFO")
