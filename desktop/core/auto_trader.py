@@ -163,6 +163,13 @@ class AutoTrader(QThread):
             'use_vix_block': True,  # Enable VIX blocking
             'vix_block_threshold': 28.0,  # Block new entries when VIX > 28
             'vix_warning_threshold': 25.0,  # Log warning when VIX > 25
+
+            # TREND CONFIRMATION FILTER: Prevent coin-flip trades
+            # Based on pattern learning: "wrong_direction" is #2 failure (4 occurrences)
+            # All wrong_direction failures had neutral indicators (RSI=50, MACD=neutral, SMA=neutral)
+            'use_trend_confirmation': True,  # Enable trend confirmation
+            'trend_min_signals': 1,  # Require at least 1 confirming signal
+            'trend_rsi_threshold': 10,  # RSI must be > 10 points from 50 to count
         }
 
         # VIX tracking
@@ -914,6 +921,13 @@ class AutoTrader(QThread):
                 return False, [reason]
             reasons.append(f"VIX: {reason}")
 
+        # 7. TREND CONFIRMATION filter - Prevent coin-flip trades
+        if self.config.get('use_trend_confirmation', True):
+            trend_ok, reason = self.check_trend_confirmation(symbol, action)
+            if not trend_ok:
+                return False, [reason]
+            reasons.append(f"Trend: {reason}")
+
         return True, reasons
 
     def check_vix_filter(self) -> tuple:
@@ -956,6 +970,77 @@ class AutoTrader(QThread):
                 print(f"[AutoTrader] VIX updated: {self.current_vix:.1f}")
         except Exception as e:
             print(f"[AutoTrader] VIX update error: {e}")
+
+    def check_trend_confirmation(self, symbol: str, action: str) -> tuple:
+        """
+        Check if there's sufficient trend confirmation for the trade direction.
+        Based on pattern learning: wrong_direction failures all had neutral indicators.
+
+        Requires at least 1 of:
+        - RSI > 60 (for buys) or RSI < 40 (for sells)
+        - MACD above signal line (for buys) or below (for sells)
+        - Price above SMA20 (for buys) or below (for sells)
+
+        Returns (ok, reason) tuple.
+        """
+        try:
+            import yfinance as yf
+            import pandas as pd
+
+            # Fetch recent data
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="2mo", interval="1d")
+
+            if len(hist) < 26:
+                return True, "Insufficient data for trend check"
+
+            close = hist['Close']
+            current_price = close.iloc[-1]
+
+            # Calculate RSI
+            delta = close.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = (100 - (100 / (1 + rs))).iloc[-1]
+
+            # Calculate MACD
+            ema12 = close.ewm(span=12, adjust=False).mean()
+            ema26 = close.ewm(span=26, adjust=False).mean()
+            macd = (ema12 - ema26).iloc[-1]
+            signal = (ema12 - ema26).ewm(span=9, adjust=False).mean().iloc[-1]
+
+            # Calculate SMA20
+            sma20 = close.rolling(20).mean().iloc[-1]
+
+            # Check confirmations
+            rsi_threshold = self.config.get('trend_rsi_threshold', 10)
+            min_signals = self.config.get('trend_min_signals', 1)
+            confirmations = []
+
+            if action == 'BUY':
+                if rsi > (50 + rsi_threshold):
+                    confirmations.append(f"RSI {rsi:.1f}>60")
+                if macd > signal:
+                    confirmations.append("MACD bullish")
+                if current_price > sma20:
+                    confirmations.append("Price>SMA20")
+            else:  # SELL
+                if rsi < (50 - rsi_threshold):
+                    confirmations.append(f"RSI {rsi:.1f}<40")
+                if macd < signal:
+                    confirmations.append("MACD bearish")
+                if current_price < sma20:
+                    confirmations.append("Price<SMA20")
+
+            if len(confirmations) >= min_signals:
+                return True, f"{len(confirmations)} confirms: {', '.join(confirmations)}"
+            else:
+                return False, f"No trend confirmation for {action} (RSI={rsi:.1f}, need {min_signals}+ signals)"
+
+        except Exception as e:
+            print(f"[AutoTrader] Trend confirmation error for {symbol}: {e}")
+            return True, "Trend check failed, allowing trade"
 
     def has_position(self, symbol: str) -> bool:
         """Check if we have a position in a symbol (checks actual broker)."""
